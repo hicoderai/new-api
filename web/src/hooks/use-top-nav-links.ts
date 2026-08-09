@@ -64,7 +64,7 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // Home
   if (modules?.home !== false) {
-    links.push({ title: t('Home'), href: '/' })
+    links.push({ title: t('Home'), href: '/', external: true })
   }
 
   // Console -> /dashboard (new console path)

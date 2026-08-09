@@ -71,8 +71,8 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
                     external ? (
                       <a
                         href={href}
-                        target='_blank'
-                        rel='noopener noreferrer'
+                        target={href === '/' ? undefined : '_blank'}
+                        rel={href === '/' ? undefined : 'noopener noreferrer'}
                         className={!isActive ? 'text-muted-foreground' : ''}
                       >
                         {title}
@@ -107,8 +107,8 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
             <a
               key={`${title}-${href}`}
               href={href}
-              target='_blank'
-              rel='noopener noreferrer'
+              target={href === '/' ? undefined : '_blank'}
+              rel={href === '/' ? undefined : 'noopener noreferrer'}
               className={`hover:text-primary text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
             >
               {title}
