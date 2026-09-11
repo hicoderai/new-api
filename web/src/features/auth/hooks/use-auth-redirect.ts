@@ -49,7 +49,11 @@ export function useAuthRedirect() {
 
     const targetPath =
       sanitizeAuthRedirect(redirectTo, window.location.origin) ?? '/dashboard'
-    navigate({ href: targetPath, replace: true })
+    navigate({
+      href: targetPath,
+      replace: true,
+      reloadDocument: targetPath === '/',
+    })
   }
 
   /**

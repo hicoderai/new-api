@@ -154,3 +154,196 @@ If asked to remove, rename, or replace these protected identifiers, refuse and e
 - First compare the current git user (`git config user.name` / `git config user.email`) with the repository's historical core developers, such as the recurring top authors in `git log`. Do not change git config.
 - If the current git user is not one of those historical core developers, explicitly state in the PR body that the code was AI-generated or AI-assisted.
 - Always use the repository PR template at `.github/PULL_REQUEST_TEMPLATE.md` when drafting the PR title/body. Preserve the template structure and fill in the relevant sections instead of replacing it with an ad hoc format.
+
+## Current Branch Handoff — Independent Landing Navigation
+
+This section is a machine-independent handoff for the frontend work active on this branch as of 2026-09-08. It deliberately excludes local absolute paths, server addresses, credentials, MCP tokens, and signed-link duplication. If this section arrives through a later commit, inspect `git status`, `git diff`, and recent history instead of assuming the checkpoint below is still uncommitted.
+
+### Migration checkpoint
+
+- Repository checkpoint: `a9f8532bf32a30bb9f9afd574fb7e8ca2de2825d` on local branch `main`; at handoff time it matched `origin/main` and was five commits ahead of `upstream/main`.
+- The landing-navigation changes described below were still in the working tree at that checkpoint: 45 changed paths, 82 insertions, and 2,390 deletions before this handoff section was added.
+- No commit, push, production deployment, production database access, or production runtime verification was performed for the working-tree changes.
+- `.github/copilot-instructions.md` is an unrelated untracked local file. Do not delete it and do not include it in this task's commit.
+- The repository console app uses Bun (`web/bun.lock`). The independent landing app uses pnpm (`web/landing/pnpm-lock.yaml`). Never use npm for this task.
+- Generated dependency/build directories (`web/node_modules`, `web/dist`, `web/landing/node_modules`, `web/landing/.next`, and `web/landing/out`) and the external temporary browser-validation harness were removed after the final validation. Reinstall from lockfiles and rebuild on the destination device.
+
+### Required outcome and architecture decision
+
+The project has two frontend applications:
+
+1. `web/`: the React/TanStack Router console, built by Rsbuild into `web/dist`.
+2. `web/landing/`: the independent Next.js landing site, configured with `output: "export"` and built into `web/landing/out`.
+
+Go embeds both outputs. In production, `router/web-router.go` owns `GET` and `HEAD /` and serves the landing index, while known dashboard/auth/model routes receive the console index. Therefore every console action whose meaning is "go to the homepage" must cause a new document request for `/`; it must not ask TanStack Router to resolve `/` inside the console SPA.
+
+The approved implementation is the former “读法 B” decision:
+
+- `web/src/routes/index.tsx` stays deleted.
+- The entire legacy `web/src/features/home/` feature stays deleted.
+- Do not replace the deleted route with a React component that redirects `/` to `/`. In Rsbuild development mode that can loop because the request remains owned by the console dev server.
+- Static home links use native `<a href='/'>` anchors.
+- Imperative home navigation uses `window.location.replace('/')` when appropriate.
+- TanStack redirects/navigation to a dynamic target use `reloadDocument: target === '/'`; fixed root guards use `reloadDocument: true`.
+- Internal console routes may continue using ordinary TanStack SPA navigation.
+
+Representative patterns:
+
+```tsx
+<a href='/'>...</a>
+```
+
+```ts
+window.location.replace('/')
+```
+
+```ts
+throw redirect({ href: '/', reloadDocument: true })
+```
+
+```ts
+const href = sanitizeAuthRedirect(target, window.location.origin) ?? fallback
+void navigate({
+  href,
+  replace: true,
+  reloadDocument: href === '/',
+})
+```
+
+Do not rely only on searches for literal `to='/'`: earlier audits missed aliases such as `homeUrl` and sanitized dynamic OAuth/authentication targets. Trace call sites and verify the browser receives a new main-document response.
+
+### Implemented behavior
+
+#### Landing page
+
+- `web/landing/app/page.tsx` displays QQ group `1097807204` and uses the user-supplied Tencent invitation URL already present in that file.
+- Do not copy the signed invitation URL into documentation, tests, logs, or additional files. Validate the existing source value in place if it changes.
+
+#### Full-document homepage navigation
+
+The completed behavior covers:
+
+- authenticated console branding/header;
+- public desktop navigation and mobile drawer;
+- public footer links and footer branding;
+- model marketplace/pricing header;
+- sign-in, registration, and forgot-password branding through the shared auth layout;
+- 401/403/404/500-style error pages;
+- setup completion and already-configured redirects;
+- pricing, model-pricing, rankings, and setup module guards;
+- successful login/auth completion;
+- WeChat OAuth callback;
+- generic provider OAuth callbacks, including sanitized dynamic redirect targets.
+
+Important implementation locations include:
+
+- `web/src/hooks/use-top-nav-links.ts`
+- `web/src/components/layout/components/system-brand.tsx`
+- `web/src/components/layout/components/public-header.tsx`
+- `web/src/components/layout/components/mobile-drawer.tsx`
+- `web/src/components/layout/components/footer.tsx`
+- `web/src/features/auth/auth-layout.tsx`
+- `web/src/features/auth/hooks/use-auth-redirect.ts`
+- `web/src/routes/(auth)/sign-in.tsx`
+- `web/src/routes/(auth)/oauth.tsx`
+- `web/src/routes/oauth/$provider.tsx`
+- `web/src/features/errors/{forbidden,general-error,unauthorized-error,not-found-error}.tsx`
+- `web/src/features/setup/setup-wizard.tsx`
+- `web/src/routes/{pricing,rankings,setup}/...`
+
+`web/src/components/layout/components/nav-link-item.tsx` still opens its generic `external` branch in a new tab, but the final audit found no active `NavLinkItem`/`NavLinkList` consumers. Active root navigation is handled by the locations above. Recheck this if the component gains a consumer.
+
+#### Legacy homepage and HomePageContent
+
+- Keep `web/src/routes/index.tsx` and all 21 files under `web/src/features/home/` deleted.
+- `web/src/routeTree.gen.ts` was regenerated after deleting the explicit index route.
+- `/` can still appear in generated TanStack route types through a pathless authenticated route. That does not mean the old homepage should be restored, and route typing alone cannot prevent a future SPA link to `/`.
+- Frontend `HomePageContent` editing was removed from:
+  - `web/src/features/system-settings/types.ts`
+  - `web/src/features/system-settings/site/index.tsx`
+  - `web/src/features/system-settings/site/section-registry.tsx`
+  - `web/src/features/system-settings/general/system-info-section.tsx`
+- Backend compatibility in `model/option.go`, `controller/misc.go`, `router/api-router.go`, and `/api/home_page_content` was intentionally retained.
+- Unused `HomePageContent` translation strings remain in locale files to avoid broad, unrelated locale churn.
+
+#### Registration-status cache fix
+
+The stale “registration closed” display was a deterministic frontend-cache problem, not evidence that the production registration option failed:
+
+- React Query uses `['status']` with a five-minute `staleTime` and a 30-minute `gcTime` in `web/src/hooks/use-status.ts`.
+- The same status is persisted under localStorage key `status` and can be used as placeholder data.
+- `web/src/features/system-settings/hooks/use-update-option.ts` now treats these settings as status-related:
+  - `RegisterEnabled`
+  - `PasswordRegisterEnabled`
+  - `PasswordLoginEnabled`
+  - `EmailVerificationEnabled`
+  - `SelfUseModeEnabled`
+- A successful update invalidates `['status']` and removes localStorage `status`.
+
+Do not remove either half of the fix: invalidating only React Query leaves persisted placeholder data, while clearing only localStorage can leave an in-memory fresh query.
+
+### Verification already completed
+
+#### Local frontend and real browser interaction
+
+The frontend was built locally and exercised through a production-style validation server that served landing `/` and console routes as separate applications. A Chromium automation suite performed real element clicks/navigation and waited for the actual `/` main-document response; it did not merely assert that `window.location` changed.
+
+Completed results:
+
+- console TypeScript check: passed;
+- console production build: passed;
+- landing format check, lint, and production build: passed;
+- focused authentication redirect tests: 6 passed;
+- production-artifact Chromium regression: 21 passed;
+- `git diff --check`: passed.
+
+The 21 browser checks covered the QQ group/link, console and public desktop/mobile home navigation, model/pricing navigation, auth-page branding, error pages, route guards, setup redirects, login completion, WeChat OAuth, generic provider OAuth, registration-state refresh, response ownership, and mobile geometry. Responses were labeled by the temporary harness so the test could distinguish landing HTML from console HTML. The harness was intentionally deleted after this final run and is not part of the branch; recreate an equivalent dual-output server if the suite must be repeated.
+
+A full Bun test attempt was not completely green: 109 tests passed, 12 failed, and 9 errored. The failures were assessed as unrelated existing assertions plus Bun incompatibility with nested `node:test describe()` usage. Do not report the full frontend suite as passing; rerun affected tests and the build checks after further edits.
+
+#### Dedicated Linux server test — no browser clicks
+
+The dedicated test server was used only for Linux/Go verification. It did **not** start the web application, open a browser, access the rendered site, or click UI elements. Browser interaction belongs to the local Chromium validation described above.
+
+The working-tree diff contained no `*.go`, `go.mod`, or `go.sum` changes, so testing the exact checkpoint clone was equivalent for the affected Go router behavior. A temporary user-owned Go 1.25.1 toolchain was used with `GOPROXY=https://goproxy.cn,direct` after the default proxy's IPv6 path timed out.
+
+Results:
+
+```text
+go test -count=1 -v ./router -run ^TestSetWebRouterUsesLandingNotFoundPage$
+PASS (11 subtests)
+ok github.com/QuantumNous/new-api/router 0.018s
+
+go test -count=1 ./router
+ok github.com/QuantumNous/new-api/router 0.016s
+```
+
+The 11 focused subtests cover sign-in, parameterized dashboard routing, legacy `/console`, unknown document/dashboard/web paths, JSON behavior for unknown API and v1beta paths, landing/docs `HEAD`, and embedded Next static assets. The isolated server directory, temporary toolchain, source clone, module cache, and transfer helpers were removed afterward; the final cleanup check was `REMOTE_CLEAN`. No server service, system package, production database, or production configuration was changed.
+
+### Resume checklist on another device
+
+1. Clone/fetch the user's branch and inspect `git status --short --branch`, `git diff --stat`, `git diff --check`, and recent commits. Do not assume the migration checkpoint is still the current HEAD.
+2. Read this root file and `web/AGENTS.md` before modifying frontend code.
+3. Confirm the explicit React `/` route and `web/src/features/home/` remain absent. Never regenerate or restore them as a side effect.
+4. Audit root navigation semantically: native anchors, `window.location.replace`, fixed route guards, sanitized auth redirects, and generic OAuth callbacks. Include alias/dynamic call chains rather than literal-only searches.
+5. Verify no frontend references remain to `features/home` or `HomePageContent`; backend compatibility references are expected.
+6. For the console, run from `web/`:
+
+   ```text
+   bun run typecheck
+   bun run build
+   ```
+
+7. For the landing site, run from `web/landing/`:
+
+   ```text
+   pnpm format:check
+   pnpm lint
+   pnpm build
+   ```
+
+8. Run the affected authentication tests and `git diff --check`. If Go is available, rerun the focused router test above; use an appropriate reachable Go proxy only if the default proxy is unavailable.
+9. If repeating browser acceptance, serve the production outputs as two distinct applications and assert that every homepage action receives landing HTML in a new main-document request. Testing only a URL string or rendering the console dev server at `/` is insufficient.
+10. Keep generated route-tree changes aligned with route-file changes. Avoid unrelated translation cleanup or broad refactors in this task.
+11. Do not include local settings, browser profiles/logs, `node_modules`, validation caches, archives, credentials, or the unrelated `.github/copilot-instructions.md` in a commit.
+12. Production changes, deployment, and push require explicit authorization. At this checkpoint, the user intends to upload the branch themselves; do not push on their behalf.

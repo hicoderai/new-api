@@ -41,7 +41,7 @@ export const Route = createFileRoute('/pricing/')({
   beforeLoad: async ({ location }) => {
     const access = await getFreshModuleAccess('pricing')
     if (!access.enabled) {
-      throw redirect({ to: '/' })
+      throw redirect({ href: '/', reloadDocument: true })
     }
     if (access.requireAuth) {
       const { auth } = useAuthStore.getState()

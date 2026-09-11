@@ -53,8 +53,8 @@ function BrandLogo({
   onClick,
 }: BrandLogoProps) {
   return (
-    <Link
-      to={homeUrl}
+    <a
+      href={homeUrl}
       className='flex items-center gap-2 text-xl font-bold'
       onClick={onClick}
     >
@@ -65,7 +65,7 @@ function BrandLogo({
         {displayLogo}
       </div>
       {loading ? <Skeleton className='h-5 w-20' /> : displaySiteName}
-    </Link>
+    </a>
   )
 }
 
@@ -267,13 +267,29 @@ export function MobileDrawer({
                         className='border-border border-b p-2.5 last:border-b-0'
                         variants={MOBILE_DRAWER_ANIMATION.menuItem as Variants}
                       >
-                        <Link
-                          to={link.href}
-                          className='text-primary/60 hover:text-primary/80 transition-colors'
-                          onClick={onClose}
-                        >
-                          {link.title}
-                        </Link>
+                        {link.external ? (
+                          <a
+                            href={link.href}
+                            target={link.href === '/' ? undefined : '_blank'}
+                            rel={
+                              link.href === '/'
+                                ? undefined
+                                : 'noopener noreferrer'
+                            }
+                            className='text-primary/60 hover:text-primary/80 transition-colors'
+                            onClick={onClose}
+                          >
+                            {link.title}
+                          </a>
+                        ) : (
+                          <Link
+                            to={link.href}
+                            className='text-primary/60 hover:text-primary/80 transition-colors'
+                            onClick={onClose}
+                          >
+                            {link.title}
+                          </Link>
+                        )}
                       </motion.div>
                     ))}
                   </AnimatePresence>

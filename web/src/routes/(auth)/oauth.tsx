@@ -45,7 +45,11 @@ function OAuthComponent() {
             const target =
               sanitizeAuthRedirect(search?.redirect, window.location.origin) ??
               '/dashboard'
-            navigate({ href: target, replace: true })
+            navigate({
+              href: target,
+              replace: true,
+              reloadDocument: target === '/',
+            })
             return
           }
           if (getServerErrorMessageKey(res)) {

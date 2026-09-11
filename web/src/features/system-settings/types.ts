@@ -112,7 +112,6 @@ export type SiteSettings = {
   Logo: string
   Footer: string
   About: string
-  HomePageContent: string
   ServerAddress: string
   'legal.user_agreement': string
   'legal.privacy_policy': string

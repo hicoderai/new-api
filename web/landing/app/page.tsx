@@ -26,9 +26,9 @@ export default function Home() {
             backgroundColor: "oklch(54.6% 0.245 262.881)",
             drawerLinks: [
               {
-                href: "https://qm.qq.com/q/hKaQ889XkA",
+                href: "https://qun.qq.com/universal-share/share?ac=1&authKey=xTo9Lnf0zix1QFzBXcno3My2STosfsePjZExaptyLoNhl3%2BixTeWWVcjoAlv9rH7&busi_data=eyJncm91cENvZGUiOiIxMDk3ODA3MjA0IiwidG9rZW4iOiJhRWg4Y0ZQQ04rOC9YcXBrYU95YzdQZDIrNjhvNVk2MERBMEdhUWpYRHlVOCtaV2NhVXBRcDc5SCtUM1BaUExxIiwidWluIjoiMjU0Nzg2MDkzOSJ9&data=PEiR7FoBIPMogdMUVhNcYQktUd2gq7jpVGM3PbJrHxb9G6yMbVtdAbeRrP19bSmGQtVuip0XMXaICR5g7sogjw&svctype=4&tempid=h5_group_info",
                 title: "加入QQ群",
-                description: "接收最新公告",
+                description: "群号 1097807204 · 接收最新公告",
               },
               {
                 href: "/sign-in",
