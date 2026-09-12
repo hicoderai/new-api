@@ -31,6 +31,7 @@ import {
   PricingToolbar,
   ModelCardGrid,
   ModelDetailsDrawer,
+  GroupDescription,
 } from './components'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
@@ -104,7 +105,6 @@ export function Pricing() {
       ),
     [usableGroup]
   )
-
   const handleClearAll = useCallback(() => {
     clearFilters()
     clearSearch()
@@ -254,6 +254,12 @@ export function Pricing() {
                 hasActiveFilters={hasActiveFilters}
                 activeFilterCount={activeFilterCount}
                 onClearFilters={clearFilters}
+              />
+
+              <GroupDescription
+                selectedGroup={groupFilter}
+                availableGroups={availableGroups}
+                usableGroup={usableGroup}
               />
 
               {renderPricingContent()}

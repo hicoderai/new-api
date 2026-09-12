@@ -75,9 +75,12 @@ export function useUpdateOption() {
 
         if (
           variables.key === 'GroupRatio' ||
+          variables.key === 'UserUsableGroups' ||
+          variables.key === 'group_ratio_setting.group_special_usable_group' ||
           variables.key === 'group_ratio_setting.hidden_groups' ||
           variables.key === 'group_ratio_setting.performance_group_mapping' ||
-          variables.key === 'group_ratio_setting.performance_rules'
+          variables.key === 'group_ratio_setting.performance_rules' ||
+          variables.key === 'group_ratio_setting.performance_fallbacks'
         ) {
           queryClient.invalidateQueries({ queryKey: ['pricing'] })
           queryClient.invalidateQueries({ queryKey: ['perf-metrics'] })

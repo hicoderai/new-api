@@ -141,7 +141,7 @@ it.each([false, true])(
             billing_expr: configured ? imageModel.billing_expr : undefined,
           }}
           groupRatio={{ default: 2 }}
-          usableGroup={{ default: { desc: '', ratio: 2 } }}
+          usableGroup={{ default: '' }}
           endpointMap={{}}
           autoGroups={[]}
           priceRate={1}
@@ -254,7 +254,7 @@ it('shows one standard task price and a localized group price without duplicate 
       <ModelDetailsContent
         model={model}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={{ default: '' }}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}
@@ -513,7 +513,7 @@ it('switches provider group prices, localized conditions and examples, and shows
       <ModelDetailsContent
         model={shared}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={{ default: '' }}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}

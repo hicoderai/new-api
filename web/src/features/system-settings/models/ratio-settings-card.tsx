@@ -183,6 +183,22 @@ export const createGroupSchema = (t: Translate) =>
       predicateMessage:
         'Expected a JSON object mapping performance scopes to source group arrays',
     }),
+    PerformanceFallbacks: createJsonStringField(t, {
+      predicate: (parsed) => {
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return false
+        }
+        return Object.entries(parsed).every(
+          ([scope, enabled]) =>
+            (scope === 'default' ||
+              (scope.startsWith('group:') &&
+                scope.slice('group:'.length).trim() !== '')) &&
+            typeof enabled === 'boolean'
+        )
+      },
+      predicateMessage:
+        'Expected a JSON object mapping fallback scopes to booleans',
+    }),
   })
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
@@ -291,6 +307,9 @@ export function RatioSettingsCard({
       groupDefaults.PerformanceGroupMapping
     ),
     PerformanceRules: normalizeJsonString(groupDefaults.PerformanceRules),
+    PerformanceFallbacks: normalizeJsonString(
+      groupDefaults.PerformanceFallbacks
+    ),
   })
   const modelSchema = useMemo(() => createModelSchema(t), [t])
   const groupSchema = useMemo(() => createGroupSchema(t), [t])
@@ -334,6 +353,9 @@ export function RatioSettingsCard({
         groupDefaults.PerformanceGroupMapping
       ),
       PerformanceRules: formatJsonForTextarea(groupDefaults.PerformanceRules),
+      PerformanceFallbacks: formatJsonForTextarea(
+        groupDefaults.PerformanceFallbacks
+      ),
     },
   })
 
@@ -391,6 +413,9 @@ export function RatioSettingsCard({
         groupDefaults.PerformanceGroupMapping
       ),
       PerformanceRules: normalizeJsonString(groupDefaults.PerformanceRules),
+      PerformanceFallbacks: normalizeJsonString(
+        groupDefaults.PerformanceFallbacks
+      ),
     }
 
     groupForm.reset({
@@ -408,6 +433,9 @@ export function RatioSettingsCard({
         groupDefaults.PerformanceGroupMapping
       ),
       PerformanceRules: formatJsonForTextarea(groupDefaults.PerformanceRules),
+      PerformanceFallbacks: formatJsonForTextarea(
+        groupDefaults.PerformanceFallbacks
+      ),
     })
   }, [groupDefaults, groupForm])
 
@@ -479,6 +507,7 @@ export function RatioSettingsCard({
           values.PerformanceGroupMapping
         ),
         PerformanceRules: normalizeJsonString(values.PerformanceRules),
+        PerformanceFallbacks: normalizeJsonString(values.PerformanceFallbacks),
       }
 
       // Map form field names to API keys (most are 1:1, except GroupSpecialUsableGroup)
@@ -489,6 +518,7 @@ export function RatioSettingsCard({
         PerformanceGroupMapping:
           'group_ratio_setting.performance_group_mapping',
         PerformanceRules: 'group_ratio_setting.performance_rules',
+        PerformanceFallbacks: 'group_ratio_setting.performance_fallbacks',
       }
 
       const updates = (

@@ -174,10 +174,14 @@ export function ModelDetailsPerformance(props: {
       ),
     staleTime: 60 * 1000,
   })
-  const groups = useMemo(
-    () => metricsQuery.data?.data.groups ?? [],
-    [metricsQuery.data]
-  )
+  const groups = useMemo(() => {
+    const enabledGroups = new Set(
+      Array.isArray(props.model.enable_groups) ? props.model.enable_groups : []
+    )
+    return (metricsQuery.data?.data.groups ?? []).filter(
+      (group) => enabledGroups.has(FILTER_ALL) || enabledGroups.has(group.group)
+    )
+  }, [metricsQuery.data, props.model.enable_groups])
   const performances = useMemo<PerformanceRow[]>(
     () =>
       groups.map((group) => ({
@@ -207,7 +211,7 @@ export function ModelDetailsPerformance(props: {
     return map
   }, [groups])
 
-  if (metricsQuery.isLoading || performances.length === 0) {
+  if (metricsQuery.isLoading || (performances.length === 0 && !overall)) {
     return (
       <div className='text-muted-foreground rounded-lg border p-6 text-center text-sm'>
         {t('Performance data is not yet available for this model.')}

@@ -92,14 +92,17 @@ func Query(params QueryParams) (QueryResult, error) {
 	if !visible {
 		return buildQueryResult(params.Model, map[bucketKey]counters{}, map[int64]counters{}), nil
 	}
-	sourceDisplays := make(map[string][]string)
-	for display, sources := range displaySources {
-		for _, source := range sources {
-			sourceDisplays[source] = append(sourceDisplays[source], display)
+	enabledGroups := model.GetModelEnableGroups(params.Model)
+	for display := range displaySources {
+		if !modelEnabledInGroup(enabledGroups, display) {
+			delete(displaySources, display)
 		}
 	}
+	if params.Group != "" && len(displaySources) == 0 {
+		return buildQueryResult(params.Model, map[bucketKey]counters{}, map[int64]counters{}), nil
+	}
 	overallSourceSet := allowedGroupSet(overallSources)
-	merged := map[bucketKey]counters{}
+	rawBuckets := map[bucketKey]counters{}
 	overallBuckets := map[int64]counters{}
 	// Query raw groups before applying display rules so DB and hot samples use
 	// the exact same source selection.
@@ -117,7 +120,8 @@ func Query(params QueryParams) (QueryResult, error) {
 			outputTokens:   row.OutputTokens,
 			generationMs:   row.GenerationMs,
 		}
-		mergeSelectedSource(merged, overallBuckets, sourceDisplays, overallSourceSet, row.ModelName, row.Group, row.BucketTs, value)
+		mergeCounters(rawBuckets, bucketKey{model: row.ModelName, group: row.Group, bucketTs: row.BucketTs}, value)
+		mergeOverallBucket(overallBuckets, overallSourceSet, row.Group, row.BucketTs, value)
 	}
 
 	hotBuckets.Range(func(key, value any) bool {
@@ -125,10 +129,27 @@ func Query(params QueryParams) (QueryResult, error) {
 		if k.model != params.Model || k.bucketTs < startTs || k.bucketTs > endTs {
 			return true
 		}
-		mergeSelectedSource(merged, overallBuckets, sourceDisplays, overallSourceSet, k.model, k.group, k.bucketTs, value.(*atomicBucket).snapshot())
+		snapshot := value.(*atomicBucket).snapshot()
+		mergeCounters(rawBuckets, k, snapshot)
+		mergeOverallBucket(overallBuckets, overallSourceSet, k.group, k.bucketTs, snapshot)
 		return true
 	})
 
+	merged := selectDisplayBuckets(params.Model, displaySources, rawBuckets)
+	if params.Group != "" {
+		overallBuckets = map[int64]counters{}
+		for key, value := range merged {
+			current := overallBuckets[key.bucketTs]
+			current.requestCount += value.requestCount
+			current.successCount += value.successCount
+			current.totalLatencyMs += value.totalLatencyMs
+			current.ttftSumMs += value.ttftSumMs
+			current.ttftCount += value.ttftCount
+			current.outputTokens += value.outputTokens
+			current.generationMs += value.generationMs
+			overallBuckets[key.bucketTs] = current
+		}
+	}
 	return buildQueryResult(params.Model, merged, overallBuckets), nil
 }
 
@@ -145,19 +166,22 @@ func QuerySummaryAll(hours int, requestedGroup ...string) (SummaryAllResult, err
 	if len(requestedGroup) > 0 {
 		group = requestedGroup[0]
 	}
-	_, groups, visible := ratio_setting.ResolvePerformanceMetricSources(group)
+	displaySources, groups, visible := ratio_setting.ResolvePerformanceMetricSources(group)
 	if !visible {
 		return SummaryAllResult{Models: []ModelSummary{}}, nil
 	}
-	allowedGroups := allowedGroupSet(groups)
+	queryGroups := groups
+	if group != "" && len(groups) > 0 && ratio_setting.PerformanceFallbackEnabled(group) && !slices.Contains(queryGroups, group) {
+		queryGroups = append(slices.Clone(queryGroups), group)
+	}
+	allowedGroups := allowedGroupSet(queryGroups)
 
-	rows, err := model.GetPerfMetricsSummaryBucketsAll(startTs, endTs, groups)
+	rows, err := model.GetPerfMetricsSummaryBucketsAll(startTs, endTs, queryGroups)
 	if err != nil {
 		return SummaryAllResult{}, err
 	}
 
-	totals := map[string]counters{}
-	modelBuckets := map[string]map[int64]counters{}
+	rawByModel := map[string]map[bucketKey]counters{}
 	for _, row := range rows {
 		value := counters{
 			requestCount:   row.RequestCount,
@@ -166,8 +190,10 @@ func QuerySummaryAll(hours int, requestedGroup ...string) (SummaryAllResult, err
 			outputTokens:   row.OutputTokens,
 			generationMs:   row.GenerationMs,
 		}
-		mergeModelTotals(totals, row.ModelName, value)
-		mergeModelBucket(modelBuckets, row.ModelName, row.BucketTs, value)
+		if rawByModel[row.ModelName] == nil {
+			rawByModel[row.ModelName] = map[bucketKey]counters{}
+		}
+		mergeCounters(rawByModel[row.ModelName], bucketKey{model: row.ModelName, group: row.Group, bucketTs: row.BucketTs}, value)
 	}
 
 	hotBuckets.Range(func(key, value any) bool {
@@ -175,19 +201,38 @@ func QuerySummaryAll(hours int, requestedGroup ...string) (SummaryAllResult, err
 		if k.bucketTs < startTs || k.bucketTs > endTs {
 			return true
 		}
-		if allowedGroups != nil {
-			if _, ok := allowedGroups[k.group]; !ok {
-				return true
-			}
-		}
-		snap := value.(*atomicBucket).snapshot()
-		if snap.requestCount == 0 {
+		if _, ok := allowedGroups[k.group]; !ok {
 			return true
 		}
-		mergeModelTotals(totals, k.model, snap)
-		mergeModelBucket(modelBuckets, k.model, k.bucketTs, snap)
+		snap := value.(*atomicBucket).snapshot()
+		if rawByModel[k.model] == nil {
+			rawByModel[k.model] = map[bucketKey]counters{}
+		}
+		mergeCounters(rawByModel[k.model], k, snap)
 		return true
 	})
+
+	totals := map[string]counters{}
+	modelBuckets := map[string]map[int64]counters{}
+	if group == "" {
+		for _, rawBuckets := range rawByModel {
+			for key, value := range rawBuckets {
+				mergeModelTotals(totals, key.model, value)
+				mergeModelBucket(modelBuckets, key.model, key.bucketTs, value)
+			}
+		}
+	} else {
+		for _, pricing := range model.GetPricing() {
+			if !modelEnabledInGroup(pricing.EnableGroup, group) {
+				continue
+			}
+			selected := selectDisplayBuckets(pricing.ModelName, displaySources, rawByModel[pricing.ModelName])
+			for key, value := range selected {
+				mergeModelTotals(totals, key.model, value)
+				mergeModelBucket(modelBuckets, key.model, key.bucketTs, value)
+			}
+		}
+	}
 
 	models := make([]ModelSummary, 0, len(totals))
 	for name, total := range totals {
@@ -316,21 +361,15 @@ func mergeCounters(merged map[bucketKey]counters, key bucketKey, value counters)
 	merged[key] = current
 }
 
-func mergeSelectedSource(
-	merged map[bucketKey]counters,
+func mergeOverallBucket(
 	overallBuckets map[int64]counters,
-	sourceDisplays map[string][]string,
 	overallSources map[string]struct{},
-	modelName string,
 	source string,
 	bucketTs int64,
 	value counters,
 ) {
 	if value.requestCount == 0 {
 		return
-	}
-	for _, display := range sourceDisplays[source] {
-		mergeCounters(merged, bucketKey{model: modelName, group: display, bucketTs: bucketTs}, value)
 	}
 	if _, ok := overallSources[source]; ok {
 		current := overallBuckets[bucketTs]
@@ -343,6 +382,39 @@ func mergeSelectedSource(
 		current.generationMs += value.generationMs
 		overallBuckets[bucketTs] = current
 	}
+}
+
+func modelEnabledInGroup(groups []string, group string) bool {
+	return slices.Contains(groups, "all") || slices.Contains(groups, group)
+}
+
+// selectDisplayBuckets chooses sources for the complete query window. This
+// keeps persisted and hot samples on the same side of the fallback decision.
+func selectDisplayBuckets(modelName string, displaySources map[string][]string, raw map[bucketKey]counters) map[bucketKey]counters {
+	selected := make(map[bucketKey]counters)
+	for display, sources := range displaySources {
+		if len(sources) == 0 {
+			continue
+		}
+		hasSamples := false
+		for key, value := range raw {
+			if key.model == modelName && slices.Contains(sources, key.group) && value.requestCount > 0 {
+				hasSamples = true
+				break
+			}
+		}
+		selectedSources := sources
+		if !hasSamples && ratio_setting.PerformanceFallbackEnabled(display) {
+			selectedSources = []string{display}
+		}
+		for key, value := range raw {
+			if key.model != modelName || !slices.Contains(selectedSources, key.group) {
+				continue
+			}
+			mergeCounters(selected, bucketKey{model: modelName, group: display, bucketTs: key.bucketTs}, value)
+		}
+	}
+	return selected
 }
 
 func buildQueryResult(modelName string, merged map[bucketKey]counters, overallBuckets map[int64]counters) QueryResult {

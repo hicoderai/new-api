@@ -67,6 +67,7 @@ const defaultModelSettings: ModelSettings = {
   'group_ratio_setting.hidden_groups': '{}',
   'group_ratio_setting.performance_group_mapping': '{}',
   'group_ratio_setting.performance_rules': '{}',
+  'group_ratio_setting.performance_fallbacks': '{}',
   RetryTimes: 0,
   ChannelDisableThreshold: '',
   AutomaticDisableChannelEnabled: false,

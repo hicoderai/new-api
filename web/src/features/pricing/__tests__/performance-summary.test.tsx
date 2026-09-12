@@ -50,6 +50,11 @@ it('uses the backend weighted headline and trend while retaining individual grou
             avg_tps: 110,
             series: [],
           },
+          {
+            ...point,
+            group: 'internal',
+            series: [],
+          },
         ],
         overall: { ...point, group: '', series: [point] },
       },
@@ -79,6 +84,7 @@ it('uses the backend weighted headline and trend while retaining individual grou
   const table = screen.getByRole('table')
   expect(within(table).getByText('stable')).toBeVisible()
   expect(within(table).getByText('premium')).toBeVisible()
+  expect(within(table).queryByText('internal')).not.toBeInTheDocument()
   const charts = await screen.findAllByLabelText('Chart data')
   expect(
     charts.some((chart) => chart.textContent?.includes('"ttft":300'))
@@ -87,6 +93,76 @@ it('uses the backend weighted headline and trend while retaining individual grou
     charts.some((chart) => chart.textContent?.includes('"uptime":60'))
   ).toBe(true)
   unmount()
+  queryClient.clear()
+})
+
+it('accepts all enabled groups and retains overall metrics when visible group rows are filtered out', async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+  const response = {
+    data: {
+      success: true,
+      data: {
+        model_name: 'fixture-model',
+        groups: [
+          {
+            group: 'internal',
+            avg_ttft_ms: 300,
+            avg_latency_ms: 3000,
+            success_rate: 90,
+            avg_tps: 30,
+            series: [],
+          },
+        ],
+        overall: {
+          group: '',
+          avg_ttft_ms: 300,
+          avg_latency_ms: 3000,
+          success_rate: 90,
+          avg_tps: 30,
+          series: [],
+        },
+      },
+    },
+  }
+  vi.spyOn(api, 'get').mockResolvedValue(response)
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ModelDetailsPerformance
+        model={{
+          id: 1,
+          model_name: 'fixture-model',
+          quota_type: 0,
+          model_ratio: 1,
+          completion_ratio: 1,
+          enable_groups: ['all'],
+        }}
+      />
+    </QueryClientProvider>
+  )
+  expect(await screen.findByText('internal')).toBeVisible()
+
+  view.rerender(
+    <QueryClientProvider client={queryClient}>
+      <ModelDetailsPerformance
+        model={{
+          id: 1,
+          model_name: 'fixture-model',
+          quota_type: 0,
+          model_ratio: 1,
+          completion_ratio: 1,
+          enable_groups: ['stable'],
+        }}
+      />
+    </QueryClientProvider>
+  )
+  expect(screen.queryByText('internal')).not.toBeInTheDocument()
+  expect(screen.getByText('3.00s')).toBeVisible()
+  expect(
+    screen.queryByText('Performance data is not yet available for this model.')
+  ).not.toBeInTheDocument()
+  view.unmount()
   queryClient.clear()
 })
 

@@ -259,6 +259,7 @@ export type ModelSettings = {
   'group_ratio_setting.hidden_groups': string
   'group_ratio_setting.performance_group_mapping': string
   'group_ratio_setting.performance_rules': string
+  'group_ratio_setting.performance_fallbacks': string
   RetryTimes: number
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
@@ -322,6 +323,7 @@ export type BillingSettings = {
   'group_ratio_setting.hidden_groups': string
   'group_ratio_setting.performance_group_mapping': string
   'group_ratio_setting.performance_rules': string
+  'group_ratio_setting.performance_fallbacks': string
   PayAddress: string
   EpayId: string
   EpayKey: string

@@ -61,6 +61,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Tooltip,
   TooltipContent,
@@ -81,6 +82,7 @@ type GroupRatioVisualEditorProps = {
   hiddenGroups: string
   performanceGroupMapping?: string
   performanceRules?: string
+  performanceFallbacks?: string
   onChange: (field: string, value: string) => void
 }
 
@@ -158,6 +160,19 @@ function parsePerformanceRules(value: string): Record<string, string[]> {
   return rules
 }
 
+function parsePerformanceFallbacks(value: string): Record<string, boolean> {
+  const parsed = safeJsonParse<unknown>(value, {
+    fallback: {},
+    silent: true,
+  })
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  return Object.fromEntries(
+    Object.entries(parsed).filter(
+      (entry): entry is [string, boolean] => typeof entry[1] === 'boolean'
+    )
+  )
+}
+
 function renamePerformanceGroup(
   value: string,
   previousName: string,
@@ -174,6 +189,21 @@ function renamePerformanceGroup(
       ),
     ]
   }
+  return JSON.stringify(next, null, 2)
+}
+
+function renamePerformanceFallback(
+  value: string,
+  previousName: string,
+  nextName?: string
+): string {
+  const current = parsePerformanceFallbacks(value)
+  const previousScope = `group:${previousName}`
+  if (!Object.hasOwn(current, previousScope)) return value
+  const next = { ...current }
+  const enabled = next[previousScope]
+  delete next[previousScope]
+  if (nextName) next[`group:${nextName}`] = enabled
   return JSON.stringify(next, null, 2)
 }
 
@@ -330,6 +360,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
   hiddenGroups,
   performanceGroupMapping = '{}',
   performanceRules = '{}',
+  performanceFallbacks = '{}',
   onChange,
 }: GroupRatioVisualEditorProps) {
   const { t } = useTranslation()
@@ -404,6 +435,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         hiddenGroups={hiddenGroups}
         performanceGroupMapping={performanceGroupMapping}
         performanceRules={performanceRules}
+        performanceFallbacks={performanceFallbacks}
         onChange={onChange}
         onShowDetail={setDetailGroup}
       />
@@ -414,6 +446,8 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         performanceGroupMapping={performanceGroupMapping}
         value={performanceRules}
         onChange={(value) => onChange('PerformanceRules', value)}
+        fallbackValue={performanceFallbacks}
+        onFallbackChange={(value) => onChange('PerformanceFallbacks', value)}
       />
 
       <GroupOverrideRules
@@ -507,6 +541,7 @@ type GroupPricingTableProps = {
   hiddenGroups: string
   performanceGroupMapping: string
   performanceRules: string
+  performanceFallbacks: string
   onChange: (field: string, value: string) => void
   onShowDetail: (name: string) => void
 }
@@ -518,6 +553,7 @@ function GroupPricingTable({
   hiddenGroups,
   performanceGroupMapping,
   performanceRules,
+  performanceFallbacks,
   onChange,
   onShowDetail,
 }: GroupPricingTableProps) {
@@ -611,9 +647,17 @@ function GroupPricingTable({
           'PerformanceRules',
           renamePerformanceGroup(performanceRules, previousName, nextName)
         )
+        onChange(
+          'PerformanceFallbacks',
+          renamePerformanceFallback(
+            performanceFallbacks,
+            previousName,
+            nextName
+          )
+        )
       }
     },
-    [emitRows, onChange, performanceRules, rows]
+    [emitRows, onChange, performanceFallbacks, performanceRules, rows]
   )
 
   const addRow = useCallback(() => {
@@ -642,9 +686,16 @@ function GroupPricingTable({
 
   const removeRow = useCallback(
     (id: string) => {
+      const removedName = rows.find((row) => row._id === id)?.name.trim()
       emitRows(rows.filter((row) => row._id !== id))
+      if (removedName) {
+        onChange(
+          'PerformanceFallbacks',
+          renamePerformanceFallback(performanceFallbacks, removedName)
+        )
+      }
     },
-    [emitRows, rows]
+    [emitRows, onChange, performanceFallbacks, rows]
   )
 
   const duplicateNames = useMemo(() => {
@@ -825,9 +876,10 @@ function GroupPricingTable({
                 className: 'min-w-56',
                 cell: (row) =>
                   row.selectable ? (
-                    <Input
+                    <Textarea
                       value={row.description}
                       placeholder={t('Group description')}
+                      className='min-h-16 resize-y'
                       onChange={(event) =>
                         updateRow(row._id, 'description', event.target.value)
                       }
@@ -901,11 +953,14 @@ type PerformanceRulesEditorProps = {
   performanceGroupMapping: string
   value: string
   onChange: (value: string) => void
+  fallbackValue: string
+  onFallbackChange: (value: string) => void
 }
 
 function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
   const { t } = useTranslation()
   const onRulesChange = props.onChange
+  const onFallbackChange = props.onFallbackChange
   const groupNames = useMemo(
     () => [
       ...new Set([...Object.keys(parseRatioMap(props.groupRatio)), 'auto']),
@@ -922,6 +977,10 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
     [props.performanceGroupMapping]
   )
   const rules = useMemo(() => parsePerformanceRules(props.value), [props.value])
+  const fallbacks = useMemo(
+    () => parsePerformanceFallbacks(props.fallbackValue),
+    [props.fallbackValue]
+  )
 
   const legacySourcesByGroup = useMemo(() => {
     const sourcesByGroup = new Map<string, string[]>()
@@ -1018,6 +1077,24 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
       onRulesChange(JSON.stringify(next, null, 2))
     },
     [onRulesChange, rules]
+  )
+
+  const setFallback = useCallback(
+    (scope: string, enabled: boolean) => {
+      onFallbackChange(
+        JSON.stringify({ ...fallbacks, [scope]: enabled }, null, 2)
+      )
+    },
+    [fallbacks, onFallbackChange]
+  )
+
+  const inheritFallback = useCallback(
+    (scope: string) => {
+      const next = { ...fallbacks }
+      delete next[scope]
+      onFallbackChange(JSON.stringify(next, null, 2))
+    },
+    [fallbacks, onFallbackChange]
   )
 
   return (
@@ -1180,6 +1257,87 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
                                   }
                                 )}
                               </p>
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  )
+                },
+              },
+              {
+                id: 'fallback',
+                header: t('Fallback to this group'),
+                className: 'min-w-56',
+                cell: (row) => {
+                  if (row.scope === 'all') {
+                    return (
+                      <span className='text-muted-foreground text-sm'>
+                        {t('Not applicable')}
+                      </span>
+                    )
+                  }
+                  const configured =
+                    row.scope === 'default' ||
+                    Object.hasOwn(fallbacks, row.scope)
+                  const enabled = configured
+                    ? (fallbacks[row.scope] ?? false)
+                    : (fallbacks.default ?? false)
+                  const label = row.groupName
+                    ? t('Fallback to {{group}} when sources have no data', {
+                        group: row.groupName,
+                      })
+                    : t('Default fallback to the selected group')
+                  return (
+                    <div className='flex items-center gap-2'>
+                      <Checkbox
+                        checked={enabled}
+                        disabled={!configured}
+                        onCheckedChange={(checked) =>
+                          setFallback(row.scope, checked === true)
+                        }
+                        aria-label={label}
+                      />
+                      {row.scope !== 'default' &&
+                        (configured ? (
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            onClick={() => inheritFallback(row.scope)}
+                            aria-label={`${t('Use inherited')}: ${label}`}
+                          >
+                            {t('Use inherited')}
+                          </Button>
+                        ) : (
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            onClick={() => setFallback(row.scope, enabled)}
+                            aria-label={`${t('Override')}: ${label}`}
+                          >
+                            {t('Override')}
+                          </Button>
+                        ))}
+                      {row.configured && row.sources.length === 0 && (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type='button'
+                                variant='ghost'
+                                size='icon'
+                                className='text-muted-foreground shrink-0 cursor-help'
+                                aria-label={t('Fallback unavailable')}
+                              />
+                            }
+                          >
+                            <Info aria-hidden='true' />
+                          </TooltipTrigger>
+                          <TooltipContent className='max-w-sm'>
+                            {t(
+                              'Fallback is ignored when the source rule intentionally has no sources.'
                             )}
                           </TooltipContent>
                         </Tooltip>

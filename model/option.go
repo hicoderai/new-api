@@ -236,6 +236,9 @@ func validateOptionValue(key string, value string) error {
 	if key == "group_ratio_setting.performance_rules" {
 		return ratio_setting.CheckPerformanceRules(value)
 	}
+	if key == "group_ratio_setting.performance_fallbacks" {
+		return ratio_setting.CheckPerformanceFallbacks(value)
+	}
 	return nil
 }
 

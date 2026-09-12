@@ -31,6 +31,7 @@ func TestPublicPerformanceVisibility(t *testing.T) {
 	previousHidden := ratio_setting.GetHiddenGroupsCopy()
 	previousMapping := setting.PerformanceGroupMapping.ReadAll()
 	previousRules := setting.PerformanceRules.ReadAll()
+	previousFallbacks := setting.PerformanceFallbacks.ReadAll()
 	previousOptions := common.OptionMap
 	common.OptionMap = make(map[string]string)
 	t.Cleanup(func() {
@@ -46,6 +47,9 @@ func TestPublicPerformanceVisibility(t *testing.T) {
 		setting.PerformanceGroupMapping.AddAll(previousMapping)
 		setting.PerformanceRules.Clear()
 		setting.PerformanceRules.AddAll(previousRules)
+		setting.PerformanceFallbacks.Clear()
+		setting.PerformanceFallbacks.AddAll(previousFallbacks)
+		model.InvalidatePricingCache()
 		hotBuckets.Clear()
 		_ = sqlDB.Close()
 	})
@@ -58,8 +62,11 @@ func TestPublicPerformanceVisibility(t *testing.T) {
 	setting.HiddenGroups.AddAll(map[string]bool{"internal": true})
 	setting.PerformanceGroupMapping.Clear()
 	setting.PerformanceRules.Clear()
+	setting.PerformanceFallbacks.Clear()
 	hotBuckets.Clear()
-	require.NoError(t, db.AutoMigrate(&model.PerfMetric{}, &model.Option{}))
+	require.NoError(t, db.AutoMigrate(&model.PerfMetric{}, &model.Option{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	require.NoError(t, db.Create(&model.Ability{Model: "shared", Group: "all", ChannelId: 1, Enabled: true}).Error)
+	model.InvalidatePricingCache()
 	ts := (time.Now().Unix()/3600 - 1) * 3600
 	require.NoError(t, db.Create([]model.PerfMetric{
 		{
@@ -108,6 +115,112 @@ func TestPublicPerformanceVisibility(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, legacySummary.Models, 1)
 	assert.Equal(t, int64(9), legacySummary.Models[0].RequestCount)
+
+	// Detail rows are the intersection of public rule groups and the model's
+	// actual sellable groups. A source sample must not make unrelated groups
+	// appear, and an explicit query for such a group is empty.
+	require.NoError(t, db.Create(&model.Ability{Model: "limited", Group: "stable", ChannelId: 2, Enabled: true}).Error)
+	require.NoError(t, db.Create([]model.PerfMetric{
+		{ModelName: "limited", Group: "internal", BucketTs: ts, RequestCount: 2, SuccessCount: 2, TotalLatencyMs: 1000},
+		{ModelName: "limited", Group: "stable", BucketTs: ts, RequestCount: 2, SuccessCount: 2, TotalLatencyMs: 200},
+	}).Error)
+	model.InvalidatePricingCache()
+	require.NoError(t, types.LoadFromJsonString(setting.PerformanceRules, `{"default":["internal"]}`))
+	limited, err := Query(QueryParams{Model: "limited"})
+	require.NoError(t, err)
+	require.Len(t, limited.Groups, 1)
+	assert.Equal(t, "stable", limited.Groups[0].Group)
+	limitedPremium, err := Query(QueryParams{Model: "limited", Group: "premium"})
+	require.NoError(t, err)
+	assert.Empty(t, limitedPremium.Groups)
+	limitedPremiumSummary, err := QuerySummaryAll(24, "premium")
+	require.NoError(t, err)
+	for _, item := range limitedPremiumSummary.Models {
+		assert.NotEqual(t, "limited", item.ModelName)
+	}
+
+	// Fallback is selected once for the whole DB+hot window. It stays on the
+	// configured source as soon as any request exists, including failures, and
+	// an explicitly empty source list remains intentionally hidden.
+	require.NoError(t, db.Create(&model.Ability{Model: "fallback", Group: "stable", ChannelId: 3, Enabled: true}).Error)
+	require.NoError(t, db.Create(&model.PerfMetric{
+		ModelName: "fallback", Group: "stable", BucketTs: ts,
+		RequestCount: 4, SuccessCount: 4, TotalLatencyMs: 4000,
+	}).Error)
+	model.InvalidatePricingCache()
+	require.NoError(t, types.LoadFromJsonString(setting.PerformanceRules, `{"group:stable":["premium"]}`))
+	defaultOff, err := Query(QueryParams{Model: "fallback", Group: "stable"})
+	require.NoError(t, err)
+	assert.Empty(t, defaultOff.Groups)
+	defaultOffSummary, err := QuerySummaryAll(24, "stable")
+	require.NoError(t, err)
+	for _, item := range defaultOffSummary.Models {
+		assert.NotEqual(t, "fallback", item.ModelName)
+	}
+
+	require.NoError(t, model.UpdateOption("group_ratio_setting.performance_fallbacks", `{"default":true}`))
+	assert.True(t, ratio_setting.PerformanceFallbackEnabled("stable"), "saved fallback options must update the config cache")
+	require.Error(t, model.UpdateOption("group_ratio_setting.performance_fallbacks", `{"default":null}`))
+	var savedFallback model.Option
+	require.NoError(t, db.Where(&model.Option{Key: "group_ratio_setting.performance_fallbacks"}).First(&savedFallback).Error)
+	assert.JSONEq(t, `{"default":true}`, savedFallback.Value)
+	fallback, err := Query(QueryParams{Model: "fallback", Group: "stable"})
+	require.NoError(t, err)
+	require.Len(t, fallback.Groups, 1)
+	assert.Equal(t, int64(1000), fallback.Groups[0].AvgLatencyMs)
+	require.NotNil(t, fallback.Overall)
+	assert.Equal(t, int64(1000), fallback.Overall.AvgLatencyMs)
+	fallbackSummary, err := QuerySummaryAll(24, "stable")
+	require.NoError(t, err)
+	foundFallback := false
+	for _, item := range fallbackSummary.Models {
+		if item.ModelName == "fallback" {
+			foundFallback = true
+			assert.Equal(t, fallback.Groups[0].AvgLatencyMs, item.AvgLatencyMs)
+			assert.Equal(t, int64(4), item.RequestCount)
+		}
+	}
+	assert.True(t, foundFallback)
+
+	require.NoError(t, types.LoadFromJsonString(setting.PerformanceFallbacks, `{"default":true,"group:stable":false}`))
+	noFallback, err := Query(QueryParams{Model: "fallback", Group: "stable"})
+	require.NoError(t, err)
+	assert.Empty(t, noFallback.Groups)
+	require.NoError(t, types.LoadFromJsonString(setting.PerformanceFallbacks, `{"group:stable":true}`))
+
+	failedSource := &atomicBucket{}
+	failedSource.add(Sample{Success: false, LatencyMs: 9000})
+	failedTs := ts + 60
+	hotBuckets.Store(bucketKey{model: "fallback", group: "premium", bucketTs: failedTs}, failedSource)
+	failed, err := Query(QueryParams{Model: "fallback", Group: "stable"})
+	require.NoError(t, err)
+	require.Len(t, failed.Groups, 1)
+	assert.Equal(t, int64(9000), failed.Groups[0].AvgLatencyMs)
+	assert.Equal(t, 0.0, failed.Groups[0].SuccessRate)
+	assert.Equal(t, []BucketPoint{{Ts: failedTs, AvgLatencyMs: 9000, SuccessRate: 0}}, failed.Groups[0].Series)
+
+	require.NoError(t, types.LoadFromJsonString(setting.PerformanceRules, `{"group:stable":["premium","internal"]}`))
+	partial, err := Query(QueryParams{Model: "limited", Group: "stable"})
+	require.NoError(t, err)
+	require.Len(t, partial.Groups, 1)
+	assert.Equal(t, int64(500), partial.Groups[0].AvgLatencyMs, "one populated source prevents mixing the original group")
+	require.NoError(t, types.LoadFromJsonString(setting.PerformanceRules, `{"group:stable":[]}`))
+	emptySources, err := Query(QueryParams{Model: "fallback", Group: "stable"})
+	require.NoError(t, err)
+	assert.Empty(t, emptySources.Groups)
+
+	require.NoError(t, types.LoadFromJsonString(setting.PerformanceRules, `{"all":[],"group:stable":["premium"]}`))
+	noOverall, err := Query(QueryParams{Model: "limited"})
+	require.NoError(t, err)
+	require.Len(t, noOverall.Groups, 1)
+	assert.Equal(t, int64(100), noOverall.Groups[0].AvgLatencyMs)
+	assert.Nil(t, noOverall.Overall, "fallback must not change the unfiltered all-source rule")
+
+	require.NoError(t, db.Where("model_name IN ?", []string{"limited", "fallback"}).Delete(&model.PerfMetric{}).Error)
+	require.NoError(t, db.Where("model IN ?", []string{"limited", "fallback"}).Delete(&model.Ability{}).Error)
+	hotBuckets.Delete(bucketKey{model: "fallback", group: "premium", bucketTs: failedTs})
+	model.InvalidatePricingCache()
+	setting.PerformanceFallbacks.Clear()
 
 	// Free rules select raw sources directly. A hidden source contributes but
 	// never appears by name; unknown sources are retained in config and ignored
@@ -284,6 +397,18 @@ func TestPerformanceRulesValidation(t *testing.T) {
 		`{"default":[""]}`, `{"default":["  "]}`, `{"default":"stable"}`,
 	} {
 		assert.Error(t, ratio_setting.CheckPerformanceRules(value), value)
+	}
+}
+
+func TestPerformanceFallbacksValidation(t *testing.T) {
+	for _, value := range []string{`{}`, `{"default":false,"group:public":true}`, `{"group:unknown":true}`} {
+		assert.NoError(t, ratio_setting.CheckPerformanceFallbacks(value), value)
+	}
+	for _, value := range []string{
+		`null`, `[]`, `"fallbacks"`, `{"all":true}`, `{"invalid":true}`,
+		`{"group:":true}`, `{"group: ":false}`, `{"default":null}`, `{"default":"true"}`, `{"default":1}`,
+	} {
+		assert.Error(t, ratio_setting.CheckPerformanceFallbacks(value), value)
 	}
 }
 

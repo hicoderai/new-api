@@ -36,12 +36,14 @@ const validGroupFormValues = {
   HiddenGroups: '{}',
   PerformanceGroupMapping: '{}',
   PerformanceRules: '{}',
+  PerformanceFallbacks: '{}',
 }
 
 function Harness(props: {
   initialHiddenGroups?: string
   initialMapping?: string
   initialRules?: string
+  initialFallbacks?: string
 }) {
   const [groupRatio, setGroupRatio] = useState('{"default":1,"internal":0}')
   const [usableGroups, setUsableGroups] = useState(
@@ -49,6 +51,7 @@ function Harness(props: {
   )
   const [mapping, setMapping] = useState(props.initialMapping ?? '{}')
   const [rules, setRules] = useState(props.initialRules ?? '{}')
+  const [fallbacks, setFallbacks] = useState(props.initialFallbacks ?? '{}')
   const [hiddenGroups, setHiddenGroups] = useState(
     props.initialHiddenGroups ?? '{}'
   )
@@ -65,10 +68,12 @@ function Harness(props: {
         hiddenGroups={hiddenGroups}
         performanceGroupMapping={mapping}
         performanceRules={rules}
+        performanceFallbacks={fallbacks}
         onChange={(field, value) => {
           if (field === 'HiddenGroups') setHiddenGroups(value)
           if (field === 'PerformanceGroupMapping') setMapping(value)
           if (field === 'PerformanceRules') setRules(value)
+          if (field === 'PerformanceFallbacks') setFallbacks(value)
           if (field === 'GroupRatio') setGroupRatio(value)
           if (field === 'UserUsableGroups') setUsableGroups(value)
         }}
@@ -76,7 +81,9 @@ function Harness(props: {
       <output aria-label='Saved hidden groups'>{hiddenGroups}</output>
       <output aria-label='Saved performance mapping'>{mapping}</output>
       <output aria-label='Saved performance rules'>{rules}</output>
+      <output aria-label='Saved performance fallbacks'>{fallbacks}</output>
       <output aria-label='Saved ratios'>{groupRatio}</output>
+      <output aria-label='Saved usable groups'>{usableGroups}</output>
     </>
   )
 }
@@ -107,6 +114,44 @@ describe('group marketplace visibility', () => {
   it('keeps editable pricing columns readable when the hidden-group column is present', () => {
     render(<Harness />)
     expect(screen.getAllByRole('table')[0]).toHaveClass('min-w-[76rem]')
+  })
+
+  it('preserves multiline group descriptions while keeping non-selectable groups read-only', async () => {
+    render(<Harness />)
+    const user = userEvent.setup()
+    const defaultRow = screen
+      .getByRole('textbox', { name: 'Group name: default' })
+      .closest('tr')
+    expect(defaultRow).not.toBeNull()
+    if (!defaultRow) throw new Error('Missing default pricing row')
+
+    const description =
+      within(defaultRow).getByPlaceholderText('Group description')
+    expect(description).toHaveValue('Default')
+    await user.clear(description)
+    await user.type(description, 'Fast models ⚡\nFor daily use 🚀')
+
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved usable groups').textContent ?? '{}'
+      )
+    ).toEqual({
+      default: 'Fast models ⚡\nFor daily use 🚀',
+      internal: 'Internal',
+    })
+
+    const selectable = within(defaultRow).getByRole('checkbox', {
+      name: 'User selectable',
+    })
+    await user.click(selectable)
+    expect(
+      within(defaultRow).queryByPlaceholderText('Group description')
+    ).not.toBeInTheDocument()
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved usable groups').textContent ?? '{}'
+      )
+    ).toEqual({ internal: 'Internal' })
   })
 
   it('hides a group without changing its availability for API keys', async () => {
@@ -236,6 +281,11 @@ describe('group marketplace visibility', () => {
     expect(
       within(defaultGroupRow).getByText('No performance data')
     ).toBeVisible()
+    expect(
+      within(defaultGroupRow).getByRole('button', {
+        name: 'Fallback unavailable',
+      })
+    ).toBeVisible()
 
     const internalGroupRow = screen
       .getByRole('combobox', { name: 'Performance sources for internal' })
@@ -259,6 +309,66 @@ describe('group marketplace visibility', () => {
     expect(
       within(defaultGroupRow).getByText('Inherits default rule')
     ).toBeVisible()
+  })
+
+  it('inherits fallback defaults and preserves explicit false overrides', async () => {
+    render(<Harness initialFallbacks='{"default":true}' />)
+    const user = userEvent.setup()
+    const defaultFallback = screen.getByRole('checkbox', {
+      name: 'Default fallback to the selected group',
+    })
+    expect(defaultFallback).toBeChecked()
+
+    const groupFallback = screen.getByRole('checkbox', {
+      name: 'Fallback to default when sources have no data',
+    })
+    expect(groupFallback).toBeChecked()
+    expect(groupFallback).toHaveAttribute('aria-disabled', 'true')
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Override: Fallback to default when sources have no data',
+      })
+    )
+    expect(groupFallback).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(groupFallback)
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance fallbacks').textContent ?? '{}'
+      )
+    ).toEqual({ default: true, 'group:default': false })
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Use inherited: Fallback to default when sources have no data',
+      })
+    )
+    expect(groupFallback).toBeChecked()
+    expect(groupFallback).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('renames and deletes group fallback overrides with their pricing group', async () => {
+    render(<Harness initialFallbacks='{"group:default":true}' />)
+    const user = userEvent.setup()
+    const name = screen.getByRole('textbox', { name: 'Group name: default' })
+    await user.clear(name)
+    await user.type(name, 'stable')
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance fallbacks').textContent ?? '{}'
+      )
+    ).toEqual({ 'group:stable': true })
+
+    const row = screen
+      .getByRole('textbox', { name: 'Group name: stable' })
+      .closest('tr')
+    expect(row).not.toBeNull()
+    if (!row) throw new Error('Missing renamed pricing row')
+    await user.click(within(row).getByRole('button', { name: 'Delete' }))
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance fallbacks').textContent ?? '{}'
+      )
+    ).toEqual({})
   })
 
   it('edits a default source rule with the shared multi-select', async () => {

@@ -76,6 +76,7 @@ type GroupFormValues = {
   HiddenGroups: string
   PerformanceGroupMapping: string
   PerformanceRules: string
+  PerformanceFallbacks: string
 }
 
 type GroupRatioFormProps = {
@@ -207,6 +208,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               hiddenGroups={form.watch('HiddenGroups')}
               performanceGroupMapping={form.watch('PerformanceGroupMapping')}
               performanceRules={form.watch('PerformanceRules')}
+              performanceFallbacks={form.watch('PerformanceFallbacks')}
               onChange={(field, value) =>
                 handleFieldChange(field as keyof GroupFormValues, value)
               }
@@ -394,6 +396,31 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   <FormDescription>
                     {t(
                       'JSON map of performance scopes to original group arrays. Explicit rules override legacy performance mapping; an empty array intentionally hides performance data.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='PerformanceFallbacks'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Performance fallback rules')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map of display scopes to whether the same group is used when configured sources have no samples.'
                     )}
                   </FormDescription>
                   <FormMessage />

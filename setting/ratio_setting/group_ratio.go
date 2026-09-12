@@ -36,6 +36,7 @@ type GroupRatioSetting struct {
 	HiddenGroups            *types.RWMap[string, bool]               `json:"hidden_groups"`
 	PerformanceGroupMapping *types.RWMap[string, string]             `json:"performance_group_mapping"`
 	PerformanceRules        *types.RWMap[string, []string]           `json:"performance_rules"`
+	PerformanceFallbacks    *types.RWMap[string, bool]               `json:"performance_fallbacks"`
 }
 
 var groupRatioSetting GroupRatioSetting
@@ -56,6 +57,7 @@ func init() {
 		HiddenGroups:            hiddenGroups,
 		PerformanceGroupMapping: types.NewRWMap[string, string](),
 		PerformanceRules:        types.NewRWMap[string, []string](),
+		PerformanceFallbacks:    types.NewRWMap[string, bool](),
 	}
 
 	config.GlobalConfig.Register("group_ratio_setting", &groupRatioSetting)
@@ -76,7 +78,19 @@ func GetGroupRatioSetting() *GroupRatioSetting {
 	if groupRatioSetting.PerformanceRules == nil {
 		groupRatioSetting.PerformanceRules = types.NewRWMap[string, []string]()
 	}
+	if groupRatioSetting.PerformanceFallbacks == nil {
+		groupRatioSetting.PerformanceFallbacks = types.NewRWMap[string, bool]()
+	}
 	return &groupRatioSetting
+}
+
+func PerformanceFallbackEnabled(group string) bool {
+	fallbacks := GetGroupRatioSetting().PerformanceFallbacks
+	if enabled, ok := fallbacks.Get("group:" + group); ok {
+		return enabled
+	}
+	enabled, _ := fallbacks.Get("default")
+	return enabled
 }
 
 func GetHiddenGroupsCopy() map[string]bool {
@@ -235,6 +249,29 @@ func CheckPerformanceRules(jsonStr string) error {
 			if strings.TrimSpace(source) == "" {
 				return errors.New("performance source group names must not be empty")
 			}
+		}
+	}
+	return nil
+}
+
+func CheckPerformanceFallbacks(jsonStr string) error {
+	var fallbacks map[string]*bool
+	if err := common.UnmarshalJsonStr(jsonStr, &fallbacks); err != nil {
+		return err
+	}
+	if fallbacks == nil {
+		return errors.New("performance fallbacks must be a JSON object")
+	}
+	for key := range fallbacks {
+		if fallbacks[key] == nil {
+			return errors.New("performance fallback values must be booleans")
+		}
+		if key == "default" {
+			continue
+		}
+		name, ok := strings.CutPrefix(key, "group:")
+		if !ok || strings.TrimSpace(name) == "" {
+			return errors.New("performance fallback keys must be default or group:<name>")
 		}
 	}
 	return nil

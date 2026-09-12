@@ -63,6 +63,7 @@ const defaultBillingSettings: BillingSettings = {
   'group_ratio_setting.hidden_groups': '{}',
   'group_ratio_setting.performance_group_mapping': '{}',
   'group_ratio_setting.performance_rules': '{}',
+  'group_ratio_setting.performance_fallbacks': '{}',
   PayAddress: '',
   EpayId: '',
   EpayKey: '',

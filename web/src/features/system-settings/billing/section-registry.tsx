@@ -55,6 +55,7 @@ const getGroupDefaults = (settings: BillingSettings) => ({
   PerformanceGroupMapping:
     settings['group_ratio_setting.performance_group_mapping'],
   PerformanceRules: settings['group_ratio_setting.performance_rules'],
+  PerformanceFallbacks: settings['group_ratio_setting.performance_fallbacks'],
 })
 
 const BILLING_SECTIONS = [
