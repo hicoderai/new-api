@@ -40,6 +40,7 @@ export type PerformanceMetricsData = {
     model_name: string
     series_schema?: string
     groups: PerformanceGroup[]
+    overall: PerformanceGroup | null
   }
 }
 

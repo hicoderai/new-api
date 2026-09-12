@@ -45,6 +45,7 @@ type QueryResult struct {
 	ModelName    string        `json:"model_name"`
 	SeriesSchema string        `json:"series_schema"`
 	Groups       []GroupResult `json:"groups"`
+	Overall      *GroupResult  `json:"overall"`
 }
 
 type SuccessRatePoint struct {

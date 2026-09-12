@@ -52,6 +52,9 @@ const getGroupDefaults = (settings: BillingSettings) => ({
   GroupSpecialUsableGroup:
     settings['group_ratio_setting.group_special_usable_group'],
   HiddenGroups: settings['group_ratio_setting.hidden_groups'],
+  PerformanceGroupMapping:
+    settings['group_ratio_setting.performance_group_mapping'],
+  PerformanceRules: settings['group_ratio_setting.performance_rules'],
 })
 
 const BILLING_SECTIONS = [

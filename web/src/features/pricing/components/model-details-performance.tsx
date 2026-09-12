@@ -37,6 +37,7 @@ import type { PerformanceGroup } from '@/features/performance-metrics/types'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
+import { FILTER_ALL } from '../constants'
 import type { UptimeDayPoint } from '../lib/mock-stats'
 import type { PricingModel } from '../types'
 import { LatencyTrendChart, UptimeTrendChart } from './model-details-charts'
@@ -151,23 +152,26 @@ function toGroupUptimeSeries(group: PerformanceGroup): UptimeDayPoint[] {
   })
 }
 
-function average(
-  rows: PerformanceRow[],
-  field: 'avg_ttft_ms' | 'avg_latency_ms'
-) {
-  const values = rows.map((row) => row[field]).filter((value) => value > 0)
-  if (values.length === 0) return 0
-  return Math.round(
-    values.reduce((sum, value) => sum + value, 0) / values.length
-  )
-}
-
-export function ModelDetailsPerformance(props: { model: PricingModel }) {
+export function ModelDetailsPerformance(props: {
+  model: PricingModel
+  selectedGroup?: string
+}) {
   const { t } = useTranslation()
+  const performanceGroup =
+    props.selectedGroup && props.selectedGroup !== FILTER_ALL
+      ? props.selectedGroup
+      : undefined
   const metricsQuery = useQuery({
-    queryKey: ['perf-metrics', props.model.model_name],
+    queryKey: [
+      'perf-metrics',
+      props.model.model_name,
+      24,
+      performanceGroup ?? null,
+    ],
     queryFn: async () =>
-      requireServerSuccess(await getPerfMetrics(props.model.model_name, 24)),
+      requireServerSuccess(
+        await getPerfMetrics(props.model.model_name, 24, performanceGroup)
+      ),
     staleTime: 60 * 1000,
   })
   const groups = useMemo(
@@ -185,8 +189,16 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
       })),
     [groups]
   )
-  const latencySeries = useMemo(() => toLatencySeries(groups), [groups])
-  const uptimeSeries = useMemo(() => toUptimeSeries(groups), [groups])
+  const overall = metricsQuery.data?.data.overall
+  const summaryGroups = useMemo(() => (overall ? [overall] : []), [overall])
+  const latencySeries = useMemo(
+    () => toLatencySeries(summaryGroups),
+    [summaryGroups]
+  )
+  const uptimeSeries = useMemo(
+    () => toUptimeSeries(summaryGroups),
+    [summaryGroups]
+  )
   const uptimeByGroup = useMemo<Record<string, UptimeDayPoint[]>>(() => {
     const map: Record<string, UptimeDayPoint[]> = {}
     for (const group of groups) {
@@ -203,23 +215,17 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
     )
   }
 
-  const tpsValues = performances
-    .map((p) => p.avg_tps)
-    .filter((value) => value > 0)
-  const avgTps =
-    tpsValues.length > 0
-      ? tpsValues.reduce((sum, value) => sum + value, 0) / tpsValues.length
-      : 0
-  const avgLatency = average(performances, 'avg_latency_ms')
-  const successRates = performances
-    .map((perf) => perf.success_rate)
-    .filter((value) => Number.isFinite(value))
-  const successRate =
-    successRates.length > 0
-      ? successRates.reduce((sum, value) => sum + value, 0) /
-        successRates.length
-      : 0
+  const successRate = overall?.success_rate ?? Number.NaN
   const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
+  let incidentHint: string | undefined
+  if (overall) {
+    incidentHint =
+      incidentCount > 0
+        ? t('{{count}} incidents in the last 24 hours', {
+            count: incidentCount,
+          })
+        : t('No incidents in the last 24 hours')
+  }
 
   return (
     <div className='flex flex-col gap-4'>
@@ -227,25 +233,19 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
         <StatCard
           icon={Timer}
           label='TPS'
-          value={formatThroughput(avgTps)}
+          value={formatThroughput(overall?.avg_tps ?? Number.NaN)}
           hint={t('Sustained tokens per second')}
         />
         <StatCard
           icon={Timer}
           label={t('Average latency')}
-          value={formatLatency(avgLatency)}
+          value={formatLatency(overall?.avg_latency_ms ?? Number.NaN)}
         />
         <StatCard
           icon={HeartPulse}
           label={t('Success rate')}
           value={formatUptimePct(successRate)}
-          hint={
-            incidentCount > 0
-              ? t('{{count}} incidents in the last 24 hours', {
-                  count: incidentCount,
-                })
-              : t('No incidents in the last 24 hours')
-          }
+          hint={incidentHint}
           valueClassName={getSuccessRateTextClass(successRate)}
         />
       </div>

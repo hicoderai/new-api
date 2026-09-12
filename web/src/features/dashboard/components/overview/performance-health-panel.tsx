@@ -59,7 +59,7 @@ function simpleAverage(
 export function PerformanceHealthPanel() {
   const { t } = useTranslation()
   const metricsQuery = useQuery({
-    queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS],
+    queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS, null],
     queryFn: async () =>
       requireServerSuccess(
         await getPerfMetricsSummary(PERFORMANCE_WINDOW_HOURS)

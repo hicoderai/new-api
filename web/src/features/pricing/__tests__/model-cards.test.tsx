@@ -421,7 +421,7 @@ describe('model cards', () => {
     )
     await waitFor(() =>
       expect(
-        queryClient.getQueryState(['perf-metrics-summary', 24])?.status
+        queryClient.getQueryState(['perf-metrics-summary', 24, null])?.status
       ).toBe('error')
     )
     expect(request).toHaveBeenCalledWith('/api/perf-metrics/summary', {
@@ -438,7 +438,7 @@ describe('model cards', () => {
   })
 
   it('paginates the model cards and disables navigation at both boundaries', async () => {
-    queryClient.setQueryData(['perf-metrics-summary', 24], {
+    queryClient.setQueryData(['perf-metrics-summary', 24, null], {
       success: true,
       data: { models: [] },
     })
@@ -462,7 +462,7 @@ describe('model cards', () => {
   })
 
   it('switches the card grid to three columns at the xl breakpoint instead of 2xl', () => {
-    queryClient.setQueryData(['perf-metrics-summary', 24], {
+    queryClient.setQueryData(['perf-metrics-summary', 24, null], {
       success: true,
       data: { models: [] },
     })

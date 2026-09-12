@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* eslint-disable react-refresh/only-export-components */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -130,7 +131,7 @@ const createModelSchema = (t: Translate) =>
     PluginBillingExpr: createJsonStringField(t),
   })
 
-const createGroupSchema = (t: Translate) =>
+export const createGroupSchema = (t: Translate) =>
   z.object({
     GroupRatio: createJsonStringField(t),
     TopupGroupRatio: createJsonStringField(t),
@@ -146,6 +147,42 @@ const createGroupSchema = (t: Translate) =>
     DefaultUseAutoGroup: z.boolean(),
     GroupSpecialUsableGroup: createJsonStringField(t),
     HiddenGroups: createJsonStringField(t),
+    PerformanceGroupMapping: createJsonStringField(t, {
+      predicate: (parsed) => {
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return false
+        }
+        return Object.entries(parsed).every(
+          ([source, target]) =>
+            source.trim() !== '' &&
+            typeof target === 'string' &&
+            target.trim() !== '' &&
+            !Object.hasOwn(parsed, target)
+        )
+      },
+      predicateMessage:
+        'Expected one-hop group mappings without empty names, self references, chains or cycles',
+    }),
+    PerformanceRules: createJsonStringField(t, {
+      predicate: (parsed) => {
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return false
+        }
+        return Object.entries(parsed).every(
+          ([scope, sources]) =>
+            (scope === 'default' ||
+              scope === 'all' ||
+              (scope.startsWith('group:') &&
+                scope.slice('group:'.length).trim() !== '')) &&
+            Array.isArray(sources) &&
+            sources.every(
+              (source) => typeof source === 'string' && source.trim() !== ''
+            )
+        )
+      },
+      predicateMessage:
+        'Expected a JSON object mapping performance scopes to source group arrays',
+    }),
   })
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
@@ -250,6 +287,10 @@ export function RatioSettingsCard({
       groupDefaults.GroupSpecialUsableGroup
     ),
     HiddenGroups: normalizeJsonString(groupDefaults.HiddenGroups),
+    PerformanceGroupMapping: normalizeJsonString(
+      groupDefaults.PerformanceGroupMapping
+    ),
+    PerformanceRules: normalizeJsonString(groupDefaults.PerformanceRules),
   })
   const modelSchema = useMemo(() => createModelSchema(t), [t])
   const groupSchema = useMemo(() => createGroupSchema(t), [t])
@@ -289,6 +330,10 @@ export function RatioSettingsCard({
         groupDefaults.GroupSpecialUsableGroup
       ),
       HiddenGroups: formatJsonForTextarea(groupDefaults.HiddenGroups),
+      PerformanceGroupMapping: formatJsonForTextarea(
+        groupDefaults.PerformanceGroupMapping
+      ),
+      PerformanceRules: formatJsonForTextarea(groupDefaults.PerformanceRules),
     },
   })
 
@@ -342,6 +387,10 @@ export function RatioSettingsCard({
         groupDefaults.GroupSpecialUsableGroup
       ),
       HiddenGroups: normalizeJsonString(groupDefaults.HiddenGroups),
+      PerformanceGroupMapping: normalizeJsonString(
+        groupDefaults.PerformanceGroupMapping
+      ),
+      PerformanceRules: normalizeJsonString(groupDefaults.PerformanceRules),
     }
 
     groupForm.reset({
@@ -355,6 +404,10 @@ export function RatioSettingsCard({
         groupDefaults.GroupSpecialUsableGroup
       ),
       HiddenGroups: formatJsonForTextarea(groupDefaults.HiddenGroups),
+      PerformanceGroupMapping: formatJsonForTextarea(
+        groupDefaults.PerformanceGroupMapping
+      ),
+      PerformanceRules: formatJsonForTextarea(groupDefaults.PerformanceRules),
     })
   }, [groupDefaults, groupForm])
 
@@ -422,6 +475,10 @@ export function RatioSettingsCard({
           values.GroupSpecialUsableGroup
         ),
         HiddenGroups: normalizeJsonString(values.HiddenGroups),
+        PerformanceGroupMapping: normalizeJsonString(
+          values.PerformanceGroupMapping
+        ),
+        PerformanceRules: normalizeJsonString(values.PerformanceRules),
       }
 
       // Map form field names to API keys (most are 1:1, except GroupSpecialUsableGroup)
@@ -429,6 +486,9 @@ export function RatioSettingsCard({
         GroupSpecialUsableGroup:
           'group_ratio_setting.group_special_usable_group',
         HiddenGroups: 'group_ratio_setting.hidden_groups',
+        PerformanceGroupMapping:
+          'group_ratio_setting.performance_group_mapping',
+        PerformanceRules: 'group_ratio_setting.performance_rules',
       }
 
       const updates = (

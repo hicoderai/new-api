@@ -230,6 +230,12 @@ func validateOptionValue(key string, value string) error {
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
+	if key == "group_ratio_setting.performance_group_mapping" {
+		return ratio_setting.CheckPerformanceGroupMapping(value)
+	}
+	if key == "group_ratio_setting.performance_rules" {
+		return ratio_setting.CheckPerformanceRules(value)
+	}
 	return nil
 }
 

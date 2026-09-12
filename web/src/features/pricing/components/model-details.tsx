@@ -61,7 +61,7 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import { DEFAULT_TOKEN_UNIT } from '../constants'
+import { DEFAULT_TOKEN_UNIT, FILTER_ALL } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import { usePricingData } from '../hooks/use-pricing-data'
 import type { ParsedTaskTier } from '../lib/billing-expr'
@@ -264,52 +264,43 @@ function OverviewMetric(props: {
   )
 }
 
-function OverviewSummaryGrid(props: { model: PricingModel }) {
+function OverviewSummaryGrid(props: {
+  model: PricingModel
+  selectedGroup?: string
+}) {
   const { t } = useTranslation()
+  const performanceGroup =
+    props.selectedGroup && props.selectedGroup !== FILTER_ALL
+      ? props.selectedGroup
+      : undefined
   const metricsQuery = useQuery({
-    queryKey: ['perf-metrics', props.model.model_name],
+    queryKey: [
+      'perf-metrics',
+      props.model.model_name,
+      24,
+      performanceGroup ?? null,
+    ],
     queryFn: async () =>
-      requireServerSuccess(await getPerfMetrics(props.model.model_name, 24)),
+      requireServerSuccess(
+        await getPerfMetrics(props.model.model_name, 24, performanceGroup)
+      ),
     staleTime: 60 * 1000,
   })
 
-  const groups = metricsQuery.data?.data.groups ?? []
-  const successRates = groups
-    .map((group) => group.success_rate)
-    .filter((rate) => Number.isFinite(rate))
-  const successRate =
-    successRates.length > 0
-      ? successRates.reduce((sum, rate) => sum + rate, 0) / successRates.length
-      : Number.NaN
-  const tpsValues = groups
-    .map((group) => group.avg_tps)
-    .filter((value) => value > 0)
-  const avgTps =
-    tpsValues.length > 0
-      ? tpsValues.reduce((sum, value) => sum + value, 0) / tpsValues.length
-      : 0
-  const latencyValues = groups
-    .map((group) => group.avg_latency_ms)
-    .filter((value) => value > 0)
-  const avgLatency =
-    latencyValues.length > 0
-      ? Math.round(
-          latencyValues.reduce((sum, value) => sum + value, 0) /
-            latencyValues.length
-        )
-      : 0
+  const overall = metricsQuery.data?.data.overall
+  const successRate = overall?.success_rate ?? Number.NaN
 
   return (
     <div className='bg-muted/20 grid overflow-hidden rounded-lg border sm:grid-cols-3 sm:divide-x'>
       <OverviewMetric
         icon={Timer}
         label='TPS'
-        value={formatThroughput(avgTps)}
+        value={formatThroughput(overall?.avg_tps ?? Number.NaN)}
       />
       <OverviewMetric
         icon={Timer}
         label={t('Average latency')}
-        value={formatLatency(avgLatency)}
+        value={formatLatency(overall?.avg_latency_ms ?? Number.NaN)}
       />
       <OverviewMetric
         icon={HeartPulse}
@@ -1478,6 +1469,7 @@ export interface ModelDetailsContentProps {
   usdExchangeRate: number
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
+  selectedGroup?: string
 }
 
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
@@ -1520,7 +1512,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
         </TabsList>
 
         <TabsContent value='overview' className='space-y-6 outline-none'>
-          <OverviewSummaryGrid model={props.model} />
+          <OverviewSummaryGrid
+            model={props.model}
+            selectedGroup={props.selectedGroup}
+          />
 
           <section className='bg-card/60 space-y-5 rounded-xl border p-4 shadow-sm'>
             <SectionTitle>{t('Pricing')}</SectionTitle>
@@ -1560,7 +1555,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
         </TabsContent>
 
         <TabsContent value='performance' className='outline-none'>
-          <ModelDetailsPerformance model={props.model} />
+          <ModelDetailsPerformance
+            model={props.model}
+            selectedGroup={props.selectedGroup}
+          />
         </TabsContent>
 
         <TabsContent value='api' className='outline-none'>

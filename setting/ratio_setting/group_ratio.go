@@ -2,6 +2,7 @@ package ratio_setting
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -33,6 +34,8 @@ type GroupRatioSetting struct {
 	GroupGroupRatio         *types.RWMap[string, map[string]float64] `json:"group_group_ratio"`
 	GroupSpecialUsableGroup *types.RWMap[string, map[string]string]  `json:"group_special_usable_group"`
 	HiddenGroups            *types.RWMap[string, bool]               `json:"hidden_groups"`
+	PerformanceGroupMapping *types.RWMap[string, string]             `json:"performance_group_mapping"`
+	PerformanceRules        *types.RWMap[string, []string]           `json:"performance_rules"`
 }
 
 var groupRatioSetting GroupRatioSetting
@@ -51,6 +54,8 @@ func init() {
 		GroupRatio:              groupRatioMap,
 		GroupGroupRatio:         groupGroupRatioMap,
 		HiddenGroups:            hiddenGroups,
+		PerformanceGroupMapping: types.NewRWMap[string, string](),
+		PerformanceRules:        types.NewRWMap[string, []string](),
 	}
 
 	config.GlobalConfig.Register("group_ratio_setting", &groupRatioSetting)
@@ -65,11 +70,174 @@ func GetGroupRatioSetting() *GroupRatioSetting {
 		groupRatioSetting.HiddenGroups = types.NewRWMap[string, bool]()
 		groupRatioSetting.HiddenGroups.AddAll(defaultHiddenGroups)
 	}
+	if groupRatioSetting.PerformanceGroupMapping == nil {
+		groupRatioSetting.PerformanceGroupMapping = types.NewRWMap[string, string]()
+	}
+	if groupRatioSetting.PerformanceRules == nil {
+		groupRatioSetting.PerformanceRules = types.NewRWMap[string, []string]()
+	}
 	return &groupRatioSetting
 }
 
 func GetHiddenGroupsCopy() map[string]bool {
 	return GetGroupRatioSetting().HiddenGroups.ReadAll()
+}
+
+// GetPerformanceDisplayGroups returns raw group -> public display group.
+// Inactive groups are private. Resolve only one hop, and fail closed when a
+// target disappears, is hidden, or itself has a mapping. Never rewrite logs.
+func GetPerformanceDisplayGroups() map[string]string {
+	active := GetGroupRatioCopy()
+	active["auto"] = 1
+	hidden := GetHiddenGroupsCopy()
+	mapping := GetGroupRatioSetting().PerformanceGroupMapping.ReadAll()
+	return resolvePerformanceDisplayGroups(active, hidden, mapping)
+}
+
+func resolvePerformanceDisplayGroups(active map[string]float64, hidden map[string]bool, mapping map[string]string) map[string]string {
+	display := make(map[string]string, len(active))
+	for source := range active {
+		if target, mapped := mapping[source]; mapped {
+			_, exists := active[target]
+			_, chained := mapping[target]
+			if exists && !hidden[target] && !chained && source != target {
+				display[source] = target
+			}
+			continue
+		}
+		if !hidden[source] {
+			display[source] = source
+		}
+	}
+	return display
+}
+
+// ResolvePerformanceMetricSources resolves public display groups to raw metric
+// groups. Sources are deliberately not resolved recursively: rules select the
+// raw group names stored in performance metrics, including hidden groups.
+func ResolvePerformanceMetricSources(requestedGroup string) (map[string][]string, []string, bool) {
+	active := GetGroupRatioCopy()
+	active["auto"] = 1
+	hidden := GetHiddenGroupsCopy()
+	setting := GetGroupRatioSetting()
+	legacyDisplay := resolvePerformanceDisplayGroups(active, hidden, setting.PerformanceGroupMapping.ReadAll())
+	rules := setting.PerformanceRules.ReadAll()
+
+	publicGroups := make(map[string]struct{})
+	legacySources := make(map[string][]string)
+	for source, display := range legacyDisplay {
+		publicGroups[display] = struct{}{}
+		legacySources[display] = append(legacySources[display], source)
+	}
+	if _, hasDefault := rules["default"]; hasDefault {
+		for group := range active {
+			if !hidden[group] {
+				publicGroups[group] = struct{}{}
+			}
+		}
+	}
+	for key := range rules {
+		name, ok := strings.CutPrefix(key, "group:")
+		if !ok || hidden[name] {
+			continue
+		}
+		if _, exists := active[name]; exists {
+			publicGroups[name] = struct{}{}
+		}
+	}
+
+	if requestedGroup != "" {
+		if _, ok := publicGroups[requestedGroup]; !ok {
+			return map[string][]string{}, nil, false
+		}
+		sources := resolvePerformanceGroupSources(requestedGroup, active, rules, legacySources)
+		return map[string][]string{requestedGroup: sources}, sources, true
+	}
+
+	displaySources := make(map[string][]string, len(publicGroups))
+	for group := range publicGroups {
+		displaySources[group] = resolvePerformanceGroupSources(group, active, rules, legacySources)
+	}
+	if sources, ok := rules["all"]; ok {
+		return displaySources, filterPerformanceSources(sources, active), true
+	}
+	allSources := make([]string, 0, len(legacyDisplay))
+	for source := range legacyDisplay {
+		allSources = append(allSources, source)
+	}
+	return displaySources, filterPerformanceSources(allSources, active), true
+}
+
+func resolvePerformanceGroupSources(group string, active map[string]float64, rules map[string][]string, legacy map[string][]string) []string {
+	if sources, ok := rules["group:"+group]; ok {
+		return filterPerformanceSources(sources, active)
+	}
+	if sources, ok := rules["default"]; ok {
+		return filterPerformanceSources(sources, active)
+	}
+	return filterPerformanceSources(legacy[group], active)
+}
+
+func filterPerformanceSources(sources []string, active map[string]float64) []string {
+	filtered := make([]string, 0, len(sources))
+	seen := make(map[string]struct{}, len(sources))
+	for _, source := range sources {
+		if _, exists := active[source]; !exists {
+			continue
+		}
+		if _, duplicate := seen[source]; duplicate {
+			continue
+		}
+		seen[source] = struct{}{}
+		filtered = append(filtered, source)
+	}
+	return filtered
+}
+
+func CheckPerformanceGroupMapping(jsonStr string) error {
+	var mapping map[string]string
+	if err := common.UnmarshalJsonStr(jsonStr, &mapping); err != nil {
+		return err
+	}
+	if mapping == nil {
+		return errors.New("performance group mapping must be a JSON object")
+	}
+	for source, target := range mapping {
+		if strings.TrimSpace(source) == "" || strings.TrimSpace(target) == "" {
+			return errors.New("performance group names must not be empty")
+		}
+		if _, chained := mapping[target]; chained {
+			return errors.New("performance group mappings must be one-hop: self references, chains and cycles are not allowed")
+		}
+	}
+	return nil
+}
+
+func CheckPerformanceRules(jsonStr string) error {
+	var rules map[string][]string
+	if err := common.UnmarshalJsonStr(jsonStr, &rules); err != nil {
+		return err
+	}
+	if rules == nil {
+		return errors.New("performance rules must be a JSON object")
+	}
+	for key, sources := range rules {
+		if key != "default" && key != "all" {
+			name, ok := strings.CutPrefix(key, "group:")
+			if !ok || strings.TrimSpace(name) == "" {
+				return errors.New("performance rule keys must be default, all, or group:<name>")
+			}
+		}
+		if sources == nil {
+			return errors.New("performance rule sources must be JSON arrays")
+		}
+		for _, source := range sources {
+			if strings.TrimSpace(source) == "" {
+				return errors.New("performance source group names must not be empty")
+			}
+		}
+	}
+	return nil
 }
 
 func GetGroupRatioCopy() map[string]float64 {

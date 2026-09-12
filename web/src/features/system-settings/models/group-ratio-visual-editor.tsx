@@ -35,6 +35,7 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
+import { MultiSelect } from '@/components/multi-select'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -60,6 +61,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 import { safeJsonParse } from '../utils/json-parser'
 
@@ -72,16 +79,20 @@ type GroupRatioVisualEditorProps = {
   maxTokenAutoGroupsField: ReactNode
   groupSpecialUsableGroup: string
   hiddenGroups: string
+  performanceGroupMapping?: string
+  performanceRules?: string
   onChange: (field: string, value: string) => void
 }
 
 type GroupPricingRow = {
   _id: string
+  _lastName: string
   name: string
   ratio: string
   topupRatio: string
   selectable: boolean
   hidden: boolean
+  performanceGroup: string
   description: string
 }
 
@@ -126,6 +137,46 @@ function parseHiddenMap(value: string): Record<string, boolean> {
   })
 }
 
+function parsePerformanceRules(value: string): Record<string, string[]> {
+  const parsed = safeJsonParse<unknown>(value, {
+    fallback: {},
+    silent: true,
+  })
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  const rules: Record<string, string[]> = {}
+  for (const [scope, sources] of Object.entries(parsed)) {
+    if (!Array.isArray(sources)) continue
+    rules[scope] = [
+      ...new Set(
+        sources.filter(
+          (source): source is string =>
+            typeof source === 'string' && source.trim() !== ''
+        )
+      ),
+    ]
+  }
+  return rules
+}
+
+function renamePerformanceGroup(
+  value: string,
+  previousName: string,
+  nextName: string
+): string {
+  const current = parsePerformanceRules(value)
+  const next: Record<string, string[]> = {}
+  for (const [scope, sources] of Object.entries(current)) {
+    const nextScope =
+      scope === `group:${previousName}` ? `group:${nextName}` : scope
+    next[nextScope] = [
+      ...new Set(
+        sources.map((source) => (source === previousName ? nextName : source))
+      ),
+    ]
+  }
+  return JSON.stringify(next, null, 2)
+}
+
 function parseNestedRatioMap(
   value: string
 ): Record<string, Record<string, number>> {
@@ -139,12 +190,14 @@ function buildGroupPricingRows(
   groupRatio: string,
   userUsableGroups: string,
   topupGroupRatio: string,
-  hiddenGroups: string
+  hiddenGroups: string,
+  performanceGroupMapping: string
 ): GroupPricingRow[] {
   const ratioMap = parseRatioMap(groupRatio)
   const usableMap = parseUsableMap(userUsableGroups)
   const topupMap = parseRatioMap(topupGroupRatio)
   const hiddenMap = parseHiddenMap(hiddenGroups)
+  const performanceMap = parseUsableMap(performanceGroupMapping)
   const names = new Set([
     ...Object.keys(ratioMap),
     ...Object.keys(usableMap),
@@ -153,11 +206,13 @@ function buildGroupPricingRows(
 
   return [...names].map((name) => ({
     _id: createGroupPricingId(),
+    _lastName: name,
     name,
     ratio: String(normalizeRatio(ratioMap[name])),
     topupRatio: Object.hasOwn(topupMap, name) ? String(topupMap[name]) : '',
     selectable: Object.hasOwn(usableMap, name),
     hidden: hiddenMap[name] === true,
+    performanceGroup: performanceMap[name] ?? '',
     description: String(usableMap[name] ?? ''),
   }))
 }
@@ -167,6 +222,7 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
   const userUsableGroups: Record<string, string> = {}
   const topupGroupRatio: Record<string, number> = {}
   const hiddenGroups: Record<string, boolean> = {}
+  const performanceGroupMapping: Record<string, string> = {}
 
   for (const row of rows) {
     const name = row.name.trim()
@@ -177,6 +233,9 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
     }
     if (row.hidden) {
       hiddenGroups[name] = true
+    }
+    if (row.performanceGroup) {
+      performanceGroupMapping[name] = row.performanceGroup
     }
     const topup = row.topupRatio.trim()
     if (topup !== '' && Number.isFinite(Number(topup))) {
@@ -189,6 +248,7 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
     UserUsableGroups: JSON.stringify(userUsableGroups, null, 2),
     TopupGroupRatio: JSON.stringify(topupGroupRatio, null, 2),
     HiddenGroups: JSON.stringify(hiddenGroups, null, 2),
+    PerformanceGroupMapping: JSON.stringify(performanceGroupMapping, null, 2),
   }
 }
 
@@ -199,6 +259,7 @@ function groupPricingSignature(rows: GroupPricingRow[]): string {
     userUsableGroups: parseUsableMap(serialized.UserUsableGroups),
     topupGroupRatio: parseRatioMap(serialized.TopupGroupRatio),
     hiddenGroups: parseHiddenMap(serialized.HiddenGroups),
+    performanceGroupMapping: parseUsableMap(serialized.PerformanceGroupMapping),
   })
 }
 
@@ -206,13 +267,15 @@ function sourceGroupPricingSignature(
   groupRatio: string,
   userUsableGroups: string,
   topupGroupRatio: string,
-  hiddenGroups: string
+  hiddenGroups: string,
+  performanceGroupMapping: string
 ): string {
   return JSON.stringify({
     groupRatio: parseRatioMap(groupRatio),
     userUsableGroups: parseUsableMap(userUsableGroups),
     topupGroupRatio: parseRatioMap(topupGroupRatio),
     hiddenGroups: parseHiddenMap(hiddenGroups),
+    performanceGroupMapping: parseUsableMap(performanceGroupMapping),
   })
 }
 
@@ -265,6 +328,8 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
   maxTokenAutoGroupsField,
   groupSpecialUsableGroup,
   hiddenGroups,
+  performanceGroupMapping = '{}',
+  performanceRules = '{}',
   onChange,
 }: GroupRatioVisualEditorProps) {
   const { t } = useTranslation()
@@ -337,8 +402,18 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         userUsableGroups={userUsableGroups}
         topupGroupRatio={topupGroupRatio}
         hiddenGroups={hiddenGroups}
+        performanceGroupMapping={performanceGroupMapping}
+        performanceRules={performanceRules}
         onChange={onChange}
         onShowDetail={setDetailGroup}
+      />
+
+      <PerformanceRulesEditor
+        groupRatio={groupRatio}
+        hiddenGroups={hiddenGroups}
+        performanceGroupMapping={performanceGroupMapping}
+        value={performanceRules}
+        onChange={(value) => onChange('PerformanceRules', value)}
       />
 
       <GroupOverrideRules
@@ -430,6 +505,8 @@ type GroupPricingTableProps = {
   userUsableGroups: string
   topupGroupRatio: string
   hiddenGroups: string
+  performanceGroupMapping: string
+  performanceRules: string
   onChange: (field: string, value: string) => void
   onShowDetail: (name: string) => void
 }
@@ -439,6 +516,8 @@ function GroupPricingTable({
   userUsableGroups,
   topupGroupRatio,
   hiddenGroups,
+  performanceGroupMapping,
+  performanceRules,
   onChange,
   onShowDetail,
 }: GroupPricingTableProps) {
@@ -448,7 +527,8 @@ function GroupPricingTable({
       groupRatio,
       userUsableGroups,
       topupGroupRatio,
-      hiddenGroups
+      hiddenGroups,
+      performanceGroupMapping
     )
   )
 
@@ -457,6 +537,7 @@ function GroupPricingTable({
     userUsableGroups,
     topupGroupRatio,
     hiddenGroups,
+    performanceGroupMapping,
   ])
   const [previousSourceKey, setPreviousSourceKey] = useState(sourceKey)
   if (sourceKey !== previousSourceKey) {
@@ -465,7 +546,8 @@ function GroupPricingTable({
       groupRatio,
       userUsableGroups,
       topupGroupRatio,
-      hiddenGroups
+      hiddenGroups,
+      performanceGroupMapping
     )
     setRows((currentRows) => {
       if (groupPricingSignature(currentRows) === incomingSignature) {
@@ -475,7 +557,8 @@ function GroupPricingTable({
         groupRatio,
         userUsableGroups,
         topupGroupRatio,
-        hiddenGroups
+        hiddenGroups,
+        performanceGroupMapping
       )
     })
   }
@@ -488,6 +571,7 @@ function GroupPricingTable({
       onChange('UserUsableGroups', serialized.UserUsableGroups)
       onChange('TopupGroupRatio', serialized.TopupGroupRatio)
       onChange('HiddenGroups', serialized.HiddenGroups)
+      onChange('PerformanceGroupMapping', serialized.PerformanceGroupMapping)
     },
     [onChange]
   )
@@ -495,14 +579,41 @@ function GroupPricingTable({
   const updateRow = useCallback(
     (
       id: string,
-      field: Exclude<keyof GroupPricingRow, '_id'>,
+      field: Exclude<keyof GroupPricingRow, '_id' | '_lastName'>,
       value: string | number | boolean
     ) => {
+      const previousName = rows.find((row) => row._id === id)?._lastName
+      const nextName = String(value).trim()
       emitRows(
-        rows.map((row) => (row._id === id ? { ...row, [field]: value } : row))
+        rows.map((row) => {
+          const updated = row._id === id ? { ...row, [field]: value } : row
+          if (field === 'name' && row._id === id && nextName) {
+            updated._lastName = nextName
+          }
+          if (
+            field === 'name' &&
+            nextName &&
+            previousName &&
+            row.performanceGroup === previousName
+          ) {
+            return { ...updated, performanceGroup: nextName }
+          }
+          return updated
+        })
       )
+      if (
+        field === 'name' &&
+        previousName &&
+        nextName &&
+        previousName !== nextName
+      ) {
+        onChange(
+          'PerformanceRules',
+          renamePerformanceGroup(performanceRules, previousName, nextName)
+        )
+      }
     },
-    [emitRows, rows]
+    [emitRows, onChange, performanceRules, rows]
   )
 
   const addRow = useCallback(() => {
@@ -517,11 +628,13 @@ function GroupPricingTable({
       ...rows,
       {
         _id: createGroupPricingId(),
+        _lastName: name,
         name,
         ratio: '1',
         topupRatio: '',
         selectable: true,
         hidden: false,
+        performanceGroup: '',
         description: '',
       },
     ])
@@ -567,7 +680,7 @@ function GroupPricingTable({
       <CardContent>
         <div className='space-y-3'>
           <StaticDataTable
-            tableClassName='min-w-[60rem]'
+            tableClassName='min-w-[76rem]'
             data={rows}
             getRowKey={(row) => row._id}
             emptyClassName='text-muted-foreground h-20 text-sm'
@@ -580,6 +693,7 @@ function GroupPricingTable({
                 cell: (row) => (
                   <Input
                     value={row.name}
+                    aria-label={`${t('Group name')}: ${row.name}`}
                     onChange={(event) =>
                       updateRow(row._id, 'name', event.target.value)
                     }
@@ -655,6 +769,57 @@ function GroupPricingTable({
                 ),
               },
               {
+                id: 'performance-group',
+                header: t('Performance display group'),
+                className: 'min-w-52',
+                cell: (row) => {
+                  const candidates = rows.filter(
+                    (target) =>
+                      target.name.trim() &&
+                      target._id !== row._id &&
+                      !target.hidden &&
+                      !target.performanceGroup
+                  )
+                  const unavailable =
+                    row.performanceGroup !== '' &&
+                    !candidates.some(
+                      (target) => target.name.trim() === row.performanceGroup
+                    )
+                  const hasSources = rows.some(
+                    (source) => source.performanceGroup === row.name.trim()
+                  )
+                  return (
+                    <div className='space-y-1'>
+                      <Combobox
+                        options={[
+                          { value: '', label: t('No merge') },
+                          ...candidates.map((target) => ({
+                            value: target.name.trim(),
+                            label: target.name.trim(),
+                          })),
+                        ]}
+                        value={row.performanceGroup}
+                        onValueChange={(value) =>
+                          updateRow(row._id, 'performanceGroup', value ?? '')
+                        }
+                        disabled={hasSources && !row.performanceGroup}
+                        aria-label={t(
+                          'Performance display group for {{group}}',
+                          { group: row.name }
+                        )}
+                        aria-invalid={unavailable}
+                        className='w-full'
+                      />
+                      {unavailable && (
+                        <p className='text-destructive text-xs'>
+                          {t('Target unavailable; performance data is hidden.')}
+                        </p>
+                      )}
+                    </div>
+                  )
+                },
+              },
+              {
                 id: 'description',
                 header: t('Description'),
                 className: 'min-w-56',
@@ -703,6 +868,12 @@ function GroupPricingTable({
             ]}
           />
 
+          <p className='text-muted-foreground text-sm'>
+            {t(
+              'Performance mapping merges metrics for the same model into a visible group when no performance source rule applies. Hidden groups without a valid target are excluded. Billing, permissions and original logs stay unchanged. Targets cannot also be mapped.'
+            )}
+          </p>
+
           {duplicateNames.length > 0 && (
             <p className='text-destructive text-sm'>
               {t('Duplicate group names: {{names}}', {
@@ -711,6 +882,346 @@ function GroupPricingTable({
             </p>
           )}
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+type PerformanceRuleRow = {
+  scope: string
+  groupName?: string
+  configured: boolean
+  sources: string[]
+  inheritedFrom: 'default' | 'legacy-all' | 'legacy-group'
+}
+
+type PerformanceRulesEditorProps = {
+  groupRatio: string
+  hiddenGroups: string
+  performanceGroupMapping: string
+  value: string
+  onChange: (value: string) => void
+}
+
+function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
+  const { t } = useTranslation()
+  const onRulesChange = props.onChange
+  const groupNames = useMemo(
+    () => [
+      ...new Set([...Object.keys(parseRatioMap(props.groupRatio)), 'auto']),
+    ],
+    [props.groupRatio]
+  )
+  const groupNameSet = useMemo(() => new Set(groupNames), [groupNames])
+  const hiddenGroups = useMemo(
+    () => parseHiddenMap(props.hiddenGroups),
+    [props.hiddenGroups]
+  )
+  const mapping = useMemo(
+    () => parseUsableMap(props.performanceGroupMapping),
+    [props.performanceGroupMapping]
+  )
+  const rules = useMemo(() => parsePerformanceRules(props.value), [props.value])
+
+  const legacySourcesByGroup = useMemo(() => {
+    const sourcesByGroup = new Map<string, string[]>()
+    for (const source of groupNames) {
+      const target = mapping[source]
+      if (target !== undefined) {
+        const targetIsValid =
+          target !== source &&
+          groupNameSet.has(target) &&
+          hiddenGroups[target] !== true &&
+          mapping[target] === undefined
+        if (targetIsValid) {
+          sourcesByGroup.set(target, [
+            ...(sourcesByGroup.get(target) ?? []),
+            source,
+          ])
+        }
+        continue
+      }
+      if (hiddenGroups[source] !== true) {
+        sourcesByGroup.set(source, [
+          ...(sourcesByGroup.get(source) ?? []),
+          source,
+        ])
+      }
+    }
+    return sourcesByGroup
+  }, [groupNameSet, groupNames, hiddenGroups, mapping])
+
+  const rows = useMemo<PerformanceRuleRow[]>(() => {
+    const legacyAllSources = [...legacySourcesByGroup.values()].flat()
+    const result: PerformanceRuleRow[] = [
+      {
+        scope: 'all',
+        configured: Object.hasOwn(rules, 'all'),
+        sources: rules.all ?? legacyAllSources,
+        inheritedFrom: 'legacy-all',
+      },
+      {
+        scope: 'default',
+        configured: Object.hasOwn(rules, 'default'),
+        sources: rules.default ?? [],
+        inheritedFrom: 'legacy-group',
+      },
+    ]
+
+    const configuredGroupNames = Object.keys(rules)
+      .filter((scope) => scope.startsWith('group:'))
+      .map((scope) => scope.slice('group:'.length))
+    const displayGroups = [...new Set([...groupNames, ...configuredGroupNames])]
+    for (const groupName of displayGroups) {
+      const scope = `group:${groupName}`
+      const configured = Object.hasOwn(rules, scope)
+      const inheritsDefault = !configured && Object.hasOwn(rules, 'default')
+      let sources = legacySourcesByGroup.get(groupName) ?? []
+      if (inheritsDefault) sources = rules.default
+      if (configured) sources = rules[scope]
+      result.push({
+        scope,
+        groupName,
+        configured,
+        sources,
+        inheritedFrom: inheritsDefault ? 'default' : 'legacy-group',
+      })
+    }
+    return result
+  }, [groupNames, legacySourcesByGroup, rules])
+
+  const sourceOptions = useMemo(
+    () =>
+      groupNames.map((group) => ({
+        value: group,
+        label:
+          hiddenGroups[group] === true
+            ? t('{{group}} (hidden)', { group })
+            : group,
+      })),
+    [groupNames, hiddenGroups, t]
+  )
+
+  const updateRule = useCallback(
+    (scope: string, sources: string[]) => {
+      onRulesChange(
+        JSON.stringify({ ...rules, [scope]: [...new Set(sources)] }, null, 2)
+      )
+    },
+    [onRulesChange, rules]
+  )
+
+  const inheritRule = useCallback(
+    (scope: string) => {
+      const next = { ...rules }
+      delete next[scope]
+      onRulesChange(JSON.stringify(next, null, 2))
+    },
+    [onRulesChange, rules]
+  )
+
+  return (
+    <Card className={sectionCardClassName}>
+      <CardHeader className={sectionHeaderClassName}>
+        <CardTitle>{t('Performance source rules')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Choose the original groups whose metrics appear in each marketplace scope. Explicit rules take priority over the legacy performance mapping; selecting no sources intentionally shows no performance data.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='flex flex-col gap-3'>
+        <TooltipProvider>
+          <StaticDataTable
+            tableClassName='min-w-[62rem]'
+            data={rows}
+            getRowKey={(row) => row.scope}
+            columns={[
+              {
+                id: 'scope',
+                header: t('Marketplace scope'),
+                className: 'min-w-44',
+                cell: (row) => {
+                  let label = row.groupName
+                  if (row.scope === 'all') label = t('All groups view')
+                  if (row.scope === 'default') {
+                    label = t('Default for display groups')
+                  }
+                  const groupName = row.groupName
+                  const unknownGroup =
+                    groupName !== undefined && !groupNameSet.has(groupName)
+                  const hiddenGroup =
+                    groupName !== undefined && hiddenGroups[groupName] === true
+                  return (
+                    <div className='flex flex-col items-start gap-1'>
+                      <div className='flex items-center gap-2'>
+                        <span className='font-medium'>{label}</span>
+                        {unknownGroup && <UnknownGroupBadge />}
+                        {hiddenGroup && (
+                          <StatusBadge variant='neutral' copyable={false}>
+                            {t('Hidden from marketplace')}
+                          </StatusBadge>
+                        )}
+                      </div>
+                      {(unknownGroup || hiddenGroup) && (
+                        <span className='text-muted-foreground text-xs'>
+                          {t(
+                            'This scope is not exposed in the marketplace; its source rule is retained but not shown publicly.'
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  )
+                },
+              },
+              {
+                id: 'status',
+                header: t('Rule status'),
+                className: 'min-w-40',
+                cell: (row) => {
+                  let inheritedLabel = t('Legacy mapping')
+                  if (row.inheritedFrom === 'default') {
+                    inheritedLabel = t('Inherits default rule')
+                  }
+                  if (row.inheritedFrom === 'legacy-all') {
+                    inheritedLabel = t('Legacy public sources')
+                  }
+                  return row.configured ? (
+                    <div className='flex flex-col items-start gap-1'>
+                      <StatusBadge variant='info' copyable={false}>
+                        {t('Explicit rule')}
+                      </StatusBadge>
+                      {row.sources.length === 0 && (
+                        <span className='text-muted-foreground text-xs'>
+                          {t('No performance data')}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <StatusBadge variant='neutral' copyable={false}>
+                      {inheritedLabel}
+                    </StatusBadge>
+                  )
+                },
+              },
+              {
+                id: 'sources',
+                header: t('Original source groups'),
+                className: 'min-w-80',
+                cell: (row) => {
+                  let scopeLabel = row.groupName ?? row.scope
+                  if (row.scope === 'all') scopeLabel = t('All groups view')
+                  if (row.scope === 'default') {
+                    scopeLabel = t('Default for display groups')
+                  }
+                  const inputId = `performance-sources-${encodeURIComponent(row.scope)}`
+                  const unknownSources = row.sources.filter(
+                    (source) => !groupNameSet.has(source)
+                  )
+                  const mismatchedSources = row.groupName
+                    ? row.sources.filter((source) => source !== row.groupName)
+                    : []
+                  const showWarning =
+                    unknownSources.length > 0 || mismatchedSources.length > 0
+                  const sourceLabel = t('Performance sources for {{scope}}', {
+                    scope: scopeLabel,
+                  })
+
+                  return (
+                    <div className='flex items-start gap-1'>
+                      <div className='min-w-72 flex-1'>
+                        <Label htmlFor={inputId} className='sr-only'>
+                          {sourceLabel}
+                        </Label>
+                        <MultiSelect
+                          id={inputId}
+                          options={sourceOptions}
+                          selected={row.sources}
+                          onChange={(sources) => updateRule(row.scope, sources)}
+                          placeholder={sourceLabel}
+                          disabled={!row.configured}
+                          maxVisibleChips={4}
+                        />
+                      </div>
+                      {showWarning && (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type='button'
+                                variant='ghost'
+                                size='icon'
+                                className='text-destructive shrink-0 cursor-help'
+                                aria-label={t(
+                                  'Review performance sources for {{scope}}',
+                                  { scope: scopeLabel }
+                                )}
+                              />
+                            }
+                          >
+                            <AlertTriangle aria-hidden='true' />
+                          </TooltipTrigger>
+                          <TooltipContent className='flex max-w-sm flex-col items-start gap-1'>
+                            {unknownSources.length > 0 && (
+                              <p>
+                                {t(
+                                  'Unknown source groups are retained and match no current pricing group: {{groups}}.',
+                                  { groups: unknownSources.join(', ') }
+                                )}
+                              </p>
+                            )}
+                            {mismatchedSources.length > 0 && (
+                              <p>
+                                {t(
+                                  'Performance for {{group}} includes groups sold under other names: {{groups}}.',
+                                  {
+                                    group: row.groupName,
+                                    groups: mismatchedSources.join(', '),
+                                  }
+                                )}
+                              </p>
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  )
+                },
+              },
+              {
+                id: 'actions',
+                header: t('Actions'),
+                className: 'w-36 text-right',
+                cellClassName: 'text-right',
+                cell: (row) =>
+                  row.configured ? (
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      onClick={() => inheritRule(row.scope)}
+                    >
+                      {t('Use inherited')}
+                    </Button>
+                  ) : (
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      onClick={() => updateRule(row.scope, row.sources)}
+                    >
+                      {t('Override')}
+                    </Button>
+                  ),
+              },
+            ]}
+          />
+        </TooltipProvider>
+        <p className='text-muted-foreground text-sm'>
+          {t(
+            'The all rule applies when no marketplace group is selected. A group rule overrides the default rule; without either, the legacy performance mapping remains in effect. Source arrays use original group names, including hidden groups, and are never resolved recursively.'
+          )}
+        </p>
       </CardContent>
     </Card>
   )

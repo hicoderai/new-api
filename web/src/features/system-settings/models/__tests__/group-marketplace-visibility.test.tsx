@@ -16,41 +16,97 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { GroupRatioVisualEditor } from '../group-ratio-visual-editor'
+import { createGroupSchema } from '../ratio-settings-card'
 
-function Harness(props: { initialHiddenGroups?: string }) {
+const validGroupFormValues = {
+  GroupRatio: '{}',
+  TopupGroupRatio: '{}',
+  UserUsableGroups: '{}',
+  GroupGroupRatio: '{}',
+  AutoGroups: '[]',
+  MaxTokenAutoGroups: 5,
+  DefaultUseAutoGroup: false,
+  GroupSpecialUsableGroup: '{}',
+  HiddenGroups: '{}',
+  PerformanceGroupMapping: '{}',
+  PerformanceRules: '{}',
+}
+
+function Harness(props: {
+  initialHiddenGroups?: string
+  initialMapping?: string
+  initialRules?: string
+}) {
+  const [groupRatio, setGroupRatio] = useState('{"default":1,"internal":0}')
+  const [usableGroups, setUsableGroups] = useState(
+    '{"default":"Default","internal":"Internal"}'
+  )
+  const [mapping, setMapping] = useState(props.initialMapping ?? '{}')
+  const [rules, setRules] = useState(props.initialRules ?? '{}')
   const [hiddenGroups, setHiddenGroups] = useState(
     props.initialHiddenGroups ?? '{}'
   )
   return (
     <>
       <GroupRatioVisualEditor
-        groupRatio='{"default":1,"internal":0}'
+        groupRatio={groupRatio}
         topupGroupRatio='{}'
-        userUsableGroups='{"default":"Default","internal":"Internal"}'
+        userUsableGroups={usableGroups}
         groupGroupRatio='{}'
         autoGroups='[]'
         maxTokenAutoGroupsField={null}
         groupSpecialUsableGroup='{}'
         hiddenGroups={hiddenGroups}
+        performanceGroupMapping={mapping}
+        performanceRules={rules}
         onChange={(field, value) => {
           if (field === 'HiddenGroups') setHiddenGroups(value)
+          if (field === 'PerformanceGroupMapping') setMapping(value)
+          if (field === 'PerformanceRules') setRules(value)
+          if (field === 'GroupRatio') setGroupRatio(value)
+          if (field === 'UserUsableGroups') setUsableGroups(value)
         }}
       />
       <output aria-label='Saved hidden groups'>{hiddenGroups}</output>
+      <output aria-label='Saved performance mapping'>{mapping}</output>
+      <output aria-label='Saved performance rules'>{rules}</output>
+      <output aria-label='Saved ratios'>{groupRatio}</output>
     </>
   )
 }
 
 describe('group marketplace visibility', () => {
+  it('accepts only documented performance scope keys while preserving explicit empty arrays', () => {
+    const schema = createGroupSchema((key) => key)
+    expect(
+      schema.safeParse({
+        ...validGroupFormValues,
+        PerformanceRules: '{"group:stable":[]}',
+      }).success
+    ).toBe(true)
+    expect(
+      schema.safeParse({
+        ...validGroupFormValues,
+        PerformanceRules: '{"unexpected":[]}',
+      }).success
+    ).toBe(false)
+    expect(
+      schema.safeParse({
+        ...validGroupFormValues,
+        PerformanceRules: 'null',
+      }).success
+    ).toBe(false)
+  })
+
   it('keeps editable pricing columns readable when the hidden-group column is present', () => {
     render(<Harness />)
-    expect(screen.getByRole('table')).toHaveClass('min-w-[60rem]')
+    expect(screen.getAllByRole('table')[0]).toHaveClass('min-w-[76rem]')
   })
 
   it('hides a group without changing its availability for API keys', async () => {
@@ -88,5 +144,214 @@ describe('group marketplace visibility', () => {
         screen.getByLabelText('Saved hidden groups').textContent ?? '{}'
       )
     ).toEqual({})
+  })
+
+  it('merges a hidden group through the selector and allows clearing the rule with the keyboard', async () => {
+    render(<Harness initialHiddenGroups='{"internal":true}' />)
+    const user = userEvent.setup()
+    const selector = screen.getByRole('combobox', {
+      name: 'Performance display group for internal',
+    })
+    await user.click(selector)
+    expect(
+      screen.queryByRole('option', { name: 'internal' })
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: 'default' }))
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance mapping').textContent ?? '{}'
+      )
+    ).toEqual({ internal: 'default' })
+    expect(
+      JSON.parse(screen.getByLabelText('Saved ratios').textContent ?? '{}')
+    ).toEqual({ default: 1, internal: 0 })
+    expect(
+      screen.getByRole('checkbox', {
+        name: 'Hide internal from model marketplace',
+      })
+    ).toBeChecked()
+    expect(
+      screen.getByRole('combobox', {
+        name: 'Performance display group for default',
+      })
+    ).toBeDisabled()
+    await user.click(selector)
+    await user.type(selector, 'No merge')
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance mapping').textContent ?? '{}'
+      )
+    ).toEqual({})
+  })
+
+  it('preserves incoming mappings when a target is renamed and hides data when that target is deleted', async () => {
+    render(
+      <Harness
+        initialHiddenGroups='{"internal":true}'
+        initialMapping='{"internal":"default"}'
+      />
+    )
+    const user = userEvent.setup()
+    const name = screen.getByRole('textbox', { name: 'Group name: default' })
+    await user.clear(name)
+    await user.type(name, 'stable')
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance mapping').textContent ?? '{}'
+      )
+    ).toEqual({ internal: 'stable' })
+    const row = screen
+      .getByRole('textbox', { name: 'Group name: stable' })
+      .closest('tr')
+    expect(row).not.toBeNull()
+    if (!row) throw new Error('Missing target group row')
+    await user.click(within(row).getByRole('button', { name: 'Delete' }))
+    expect(
+      screen.getByText('Target unavailable; performance data is hidden.')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('combobox', {
+        name: 'Performance display group for internal',
+      })
+    ).toHaveAttribute('aria-invalid', 'true')
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance mapping').textContent ?? '{}'
+      )
+    ).toEqual({ internal: 'stable' })
+  })
+
+  it('distinguishes inherited rules from an explicit empty source list', async () => {
+    render(
+      <Harness initialRules='{"default":["internal"],"group:default":[]}' />
+    )
+    const user = userEvent.setup()
+    const defaultGroupRow = screen
+      .getByRole('combobox', { name: 'Performance sources for default' })
+      .closest('tr')
+    expect(defaultGroupRow).not.toBeNull()
+    if (!defaultGroupRow) throw new Error('Missing default group rule')
+    expect(within(defaultGroupRow).getByText('Explicit rule')).toBeVisible()
+    expect(
+      within(defaultGroupRow).getByText('No performance data')
+    ).toBeVisible()
+
+    const internalGroupRow = screen
+      .getByRole('combobox', { name: 'Performance sources for internal' })
+      .closest('tr')
+    expect(internalGroupRow).not.toBeNull()
+    if (!internalGroupRow) throw new Error('Missing internal group rule')
+    expect(
+      within(internalGroupRow).getByText('Inherits default rule')
+    ).toBeVisible()
+
+    await user.click(
+      within(defaultGroupRow).getByRole('button', {
+        name: 'Use inherited',
+      })
+    )
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance rules').textContent ?? '{}'
+      )
+    ).toEqual({ default: ['internal'] })
+    expect(
+      within(defaultGroupRow).getByText('Inherits default rule')
+    ).toBeVisible()
+  })
+
+  it('edits a default source rule with the shared multi-select', async () => {
+    render(<Harness />)
+    const user = userEvent.setup()
+    const defaultRuleRow = screen
+      .getByText('Default for display groups')
+      .closest('tr')
+    expect(defaultRuleRow).not.toBeNull()
+    if (!defaultRuleRow) throw new Error('Missing default performance rule')
+
+    await user.click(
+      within(defaultRuleRow).getByRole('button', { name: 'Override' })
+    )
+    const sourceSelector = within(defaultRuleRow).getByRole('combobox', {
+      name: 'Performance sources for Default for display groups',
+    })
+    await user.click(sourceSelector)
+    await user.click(screen.getByRole('option', { name: 'internal' }))
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance rules').textContent ?? '{}'
+      )
+    ).toEqual({ default: ['internal'] })
+  })
+
+  it('copies every active source including auto when overriding the inherited all rule', async () => {
+    render(<Harness />)
+    const user = userEvent.setup()
+    const allRuleRow = screen.getByText('All groups view').closest('tr')
+    expect(allRuleRow).not.toBeNull()
+    if (!allRuleRow) throw new Error('Missing all performance rule')
+    await user.click(
+      within(allRuleRow).getByRole('button', { name: 'Override' })
+    )
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance rules').textContent ?? '{}'
+      )
+    ).toEqual({ all: ['default', 'internal', 'auto'] })
+  })
+
+  it('handles a null rules value and explains that hidden scopes stay private', () => {
+    render(
+      <Harness initialHiddenGroups='{"internal":true}' initialRules='null' />
+    )
+    expect(screen.getByText('Performance source rules')).toBeVisible()
+    expect(
+      screen.getByText(
+        'This scope is not exposed in the marketplace; its source rule is retained but not shown publicly.'
+      )
+    ).toBeVisible()
+  })
+
+  it('renames configured scopes and sources while retaining deleted sources as unknown', async () => {
+    render(
+      <Harness initialRules='{"all":["default","ghost"],"group:default":["default","internal"]}' />
+    )
+    const user = userEvent.setup()
+    const defaultName = screen.getByRole('textbox', {
+      name: 'Group name: default',
+    })
+    await user.clear(defaultName)
+    await user.type(defaultName, 'stable')
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance rules').textContent ?? '{}'
+      )
+    ).toEqual({
+      all: ['stable', 'ghost'],
+      'group:stable': ['stable', 'internal'],
+    })
+
+    const internalPricingRow = screen
+      .getByRole('textbox', { name: 'Group name: internal' })
+      .closest('tr')
+    expect(internalPricingRow).not.toBeNull()
+    if (!internalPricingRow) throw new Error('Missing internal pricing row')
+    await user.click(
+      within(internalPricingRow).getByRole('button', { name: 'Delete' })
+    )
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance rules').textContent ?? '{}'
+      )
+    ).toEqual({
+      all: ['stable', 'ghost'],
+      'group:stable': ['stable', 'internal'],
+    })
+    expect(
+      screen.getByRole('button', {
+        name: 'Review performance sources for stable',
+      })
+    ).toBeVisible()
   })
 })

@@ -73,8 +73,15 @@ export function useUpdateOption() {
           }
         }
 
-        if (variables.key === 'group_ratio_setting.hidden_groups') {
+        if (
+          variables.key === 'GroupRatio' ||
+          variables.key === 'group_ratio_setting.hidden_groups' ||
+          variables.key === 'group_ratio_setting.performance_group_mapping' ||
+          variables.key === 'group_ratio_setting.performance_rules'
+        ) {
           queryClient.invalidateQueries({ queryKey: ['pricing'] })
+          queryClient.invalidateQueries({ queryKey: ['perf-metrics'] })
+          queryClient.invalidateQueries({ queryKey: ['perf-metrics-summary'] })
         }
 
         toast.success(i18next.t('Setting updated successfully'))
