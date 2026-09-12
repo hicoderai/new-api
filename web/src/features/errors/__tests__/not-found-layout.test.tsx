@@ -16,100 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { after, describe, test } from 'node:test'
+import { render, screen, within } from '@testing-library/react'
+import { describe, expect, test } from 'vitest'
 
-import { Window } from 'happy-dom'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'ResizeObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
-
-const { act } = await import('react')
-const { createRoot } = await import('react-dom/client')
-const { createInstance } = await import('i18next')
-const { I18nextProvider, initReactI18next } = await import('react-i18next')
-const { NotFoundError } = await import('../not-found-error')
-
-const i18n = createInstance()
-await i18n.use(initReactI18next).init({
-  lng: 'en',
-  resources: {
-    en: {
-      translation: {
-        'Oops! Page Not Found!': 'Page not found',
-        'Quick Links': 'Quick links',
-        'Back to Home': 'Back to home',
-        Docs: 'Docs',
-      },
-    },
-  },
-})
-
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
+import { NotFoundError } from '../not-found-error'
 
 describe('not found page', () => {
-  after(() => {
-    domWindow.close()
-  })
+  test('offers document links to the landing homepage and docs for console route misses', () => {
+    render(<NotFoundError />)
 
-  test('uses the landing-page layout for console route misses', async () => {
-    const container = document.createElement('div')
-    document.body.append(container)
-    const root = createRoot(container)
-
-    await act(async () =>
-      root.render(
-        <I18nextProvider i18n={i18n}>
-          <NotFoundError />
-        </I18nextProvider>
-      )
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      '404 NotFoundOops! Page Not Found!'
     )
-
-    const page = container.querySelector<HTMLElement>(
-      '[data-landing-not-found]'
-    )
-    assert.ok(page)
-    assert.equal(
-      page.querySelector('h1')?.textContent,
-      '404 NotFoundPage not found'
-    )
-
-    const links = [...page.querySelectorAll<HTMLAnchorElement>('nav a')]
-    assert.deepEqual(
-      links.map((link) => link.getAttribute('href')),
-      ['/', '/docs/']
-    )
-    assert.deepEqual(
-      links.map((link) => link.textContent?.trim()),
-      ['Back to home', 'Docs']
-    )
-
-    await act(async () => root.unmount())
-    container.remove()
+    const navigation = screen.getByRole('navigation', { name: 'Quick Links' })
+    expect(
+      within(navigation).getByRole('link', { name: 'Back to Home' })
+    ).toHaveAttribute('href', '/')
+    expect(
+      within(navigation).getByRole('link', { name: 'Docs' })
+    ).toHaveAttribute('href', '/docs/')
   })
 })

@@ -23,43 +23,51 @@ type WebAssets struct {
 	LandingNotFoundPage []byte
 }
 
-func SetWebRouter(router *gin.Engine, assets WebAssets) {
+func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.HandlerFunc) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, ".")
 	landingFS := common.EmbedFolder(assets.LandingBuildFS, ".")
 
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
-	router.Use(middleware.GlobalWebRateLimit())
-	router.Use(middleware.Cache())
-	router.Match([]string{http.MethodGet, http.MethodHead}, "/", func(c *gin.Context) {
-		serveLandingIndex(c, assets.LandingIndexPage)
-	})
-	router.Match([]string{http.MethodGet, http.MethodHead}, "/docs", func(c *gin.Context) {
-		serveLandingPage(c, assets.LandingBuildFS, "docs/index.html", assets.LandingNotFoundPage)
-	})
-	router.Match([]string{http.MethodGet, http.MethodHead}, "/docs/*page", func(c *gin.Context) {
-		page := strings.TrimPrefix(c.Param("page"), "/")
-		if page == "" {
-			serveLandingPage(c, assets.LandingBuildFS, "docs/index.html", assets.LandingNotFoundPage)
-			return
-		}
-		serveLandingPage(c, assets.LandingBuildFS, path.Join("docs", page, "index.html"), assets.LandingNotFoundPage)
-	})
-	router.Use(static.Serve("/", landingFS))
-	router.Use(static.Serve("/", frontendFS))
-	router.NoRoute(func(c *gin.Context) {
-		c.Set(middleware.RouteTagKey, "web")
-		requestPath := c.Request.URL.Path
-		if hasPathPrefix(requestPath, "/v1") || hasPathPrefix(requestPath, "/v1beta") || hasPathPrefix(requestPath, "/api") || hasPathPrefix(requestPath, "/assets") {
-			controller.RelayNotFound(c)
-			return
-		}
-		c.Header("Cache-Control", "no-cache")
-		if isDashboardRoute(requestPath) {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
-			return
-		}
-		c.Data(http.StatusNotFound, "text/html; charset=utf-8", assets.LandingNotFoundPage)
-	})
+	// Plugins may own dynamic API paths. Dispatch them before applying web
+	// middleware or returning either frontend's HTML fallback.
+	router.NoRoute(
+		pluginDispatcher,
+		middleware.RouteTag("web"),
+		gzip.Gzip(gzip.DefaultCompression),
+		middleware.AccessTokenAudit(),
+		middleware.GlobalWebRateLimit(),
+		middleware.Cache(),
+		func(c *gin.Context) {
+			if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+				return
+			}
+			requestPath := c.Request.URL.Path
+			if requestPath == "/" {
+				serveLandingIndex(c, assets.LandingIndexPage)
+				c.Abort()
+				return
+			}
+			if hasPathPrefix(requestPath, "/docs") {
+				page := strings.TrimPrefix(strings.TrimPrefix(requestPath, "/docs"), "/")
+				serveLandingPage(c, assets.LandingBuildFS, path.Join("docs", page, "index.html"), assets.LandingNotFoundPage)
+				c.Abort()
+			}
+		},
+		static.Serve("/", landingFS),
+		static.Serve("/", frontendFS),
+		func(c *gin.Context) {
+			requestPath := c.Request.URL.Path
+			if hasPathPrefix(requestPath, "/v1") || hasPathPrefix(requestPath, "/v1beta") || hasPathPrefix(requestPath, "/api") || hasPathPrefix(requestPath, "/assets") {
+				controller.RelayNotFound(c)
+				return
+			}
+			c.Header("Cache-Control", "no-cache")
+			if isDashboardRoute(requestPath) {
+				c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
+				return
+			}
+			c.Data(http.StatusNotFound, "text/html; charset=utf-8", assets.LandingNotFoundPage)
+		},
+	)
 }
 
 func hasPathPrefix(requestPath string, prefix string) bool {
@@ -93,6 +101,8 @@ var dashboardExactRoutes = map[string]struct{}{
 	"/models":                     {},
 	"/playground":                 {},
 	"/profile":                    {},
+	"/security":                   {},
+	"/task-plugins":               {},
 	"/redemption-codes":           {},
 	"/subscriptions":              {},
 	"/system-info":                {},
