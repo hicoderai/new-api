@@ -25,7 +25,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "HelloCoder",
   description:
-    "通过统一接口连接主流AI大模型，自费正价PRO20x账号，GPT系列低至0.06x，Claude低至0.6x，为VibeCoding助力",
+    "通过统一接口连接主流AI大模型，自费正价PRO20x账号，GPT系列低至0.09x，Claude低至0.6x，为VibeCoding助力",
   icons: {
     icon: "/favicon.ico",
   },

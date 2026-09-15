@@ -18,7 +18,7 @@ interface HeroProps {
   bottomRatio: number;
 }
 
-const modelNames = ["GPT-5.5", "GPT-5.6 Sol", "Claude Opus 4.8", "Claude Fable 5", "Grok 4.5"];
+const modelNames = ["GPT 6 Astra", "GPT-5.6 Sol", "Claude Opus 4.8", "Claude Fable 5", "Grok 4.5"];
 
 export function Hero({ topCard, bottomCard, topRatio, bottomRatio }: HeroProps) {
   return (

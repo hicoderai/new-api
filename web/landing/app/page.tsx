@@ -63,25 +63,26 @@ export default function Home() {
               name: "ChatGPT",
               logoSrc: "/logo/chatgpt.svg",
               rates: [
-                { label: "PRO20X", multiplier: "0.2x" },
-                { label: "默认", multiplier: "0.15x" },
-                { label: "福利", multiplier: "0.09x" },
-                { label: "灵车", multiplier: "0.04x" },
+                { label: "GPT 稳定", multiplier: "0.24x" },
+                { label: "GPT 默认", multiplier: "0.15x" },
+                { label: "GPT 福利", multiplier: "0.09x" },
               ],
               availableModels: [
+                "GPT 6 Astra",
                 "GPT 5.6 Sol",
                 "GPT 5.6 Terra",
                 "GPT 5.6 Luna",
                 "GPT 5.5",
                 "GPT 5.4",
+                "GPT 5.4 Mini",
               ],
             },
             {
               name: "Claude",
               logoSrc: "/logo/claude.svg",
               rates: [
-                { label: "默认", multiplier: "1.3x" },
-                { label: "福利", multiplier: "0.6x" },
+                { label: "Claude", multiplier: "0.9x" },
+                { label: "Claude 福利", multiplier: "0.5x" },
               ],
               availableModels: [
                 "Fable 5",
@@ -98,23 +99,38 @@ export default function Home() {
             {
               name: "Grok",
               logoSrc: "/logo/grok.svg",
-              rates: [{ label: "默认", multiplier: "0.3x" }],
-              availableModels: ["Grok 4.5"],
+              rates: [{ label: "Grok", multiplier: "0.3x" }],
+              availableModels: ["Grok 4.6", "Grok 4.5"],
             },
             {
               name: "Gemini",
               logoSrc: "/logo/gemini.svg",
-              rates: [{ label: "默认", multiplier: "0.5x" }],
-              availableModels: ["Gemini 3.1 Pro", "Gemini 3.5 Flash", "Gemini 3.6 Flash"],
+              rates: [{ label: "Gemini", multiplier: "0.5x" }],
+              availableModels: [
+                "Gemini 3.7 Flash",
+                "Gemini 3.6 Flash",
+                "Gemini 3.5 Flash",
+                "Gemini 3.1 Pro",
+                "Gemini 3.1 Flash",
+              ],
             },
             {
               name: "DeepSeek",
               logoSrc: "/logo/deepseek.svg",
               rates: [
-                { label: "默认", multiplier: "0.1x" },
-                { label: "福利", multiplier: "0.03x" },
+                { label: "Deepseek", multiplier: "0.6x" },
+                { label: "国模", multiplier: "0.4x" },
               ],
-              availableModels: ["DeepSeek V4Flash 正式版"],
+              availableModels: ["DeepSeek V4 Pro", "DeepSeek V4 Flash", "DeepSeek Flash"],
+            },
+            {
+              name: "智谱",
+              logoSrc: "/logo/zhipu.svg",
+              rates: [
+                { label: "智谱", multiplier: "0.6x" },
+                { label: "国模", multiplier: "0.4x" },
+              ],
+              availableModels: ["GLM 5.3", "GLM 5.3 Flash", "GLM 5.2"],
             },
           ]}
         />
