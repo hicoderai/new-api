@@ -31,6 +31,7 @@ const defaultSiteSettings: SiteSettings = {
   Footer: '',
   About: '',
   ServerAddress: '',
+  TaskPublicAddress: '',
   'legal.user_agreement': '',
   'legal.privacy_policy': '',
   HeaderNavModules: '',

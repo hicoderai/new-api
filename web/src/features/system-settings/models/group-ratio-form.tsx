@@ -73,6 +73,10 @@ type GroupFormValues = {
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
   GroupSpecialUsableGroup: string
+  HiddenGroups: string
+  PerformanceGroupMapping: string
+  PerformanceRules: string
+  PerformanceFallbacks: string
 }
 
 type GroupRatioFormProps = {
@@ -201,6 +205,10 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 />
               }
               groupSpecialUsableGroup={form.watch('GroupSpecialUsableGroup')}
+              hiddenGroups={form.watch('HiddenGroups')}
+              performanceGroupMapping={form.watch('PerformanceGroupMapping')}
+              performanceRules={form.watch('PerformanceRules')}
+              performanceFallbacks={form.watch('PerformanceFallbacks')}
               onChange={(field, value) =>
                 handleFieldChange(field as keyof GroupFormValues, value)
               }
@@ -310,6 +318,109 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   <FormDescription>
                     {t(
                       'JSON map of group → description exposed when users create API keys.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='HiddenGroups'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('Groups hidden from model marketplace')}
+                  </FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                      heightClassName='h-40 min-h-40 max-h-40'
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map of group identifiers to true. Hidden groups remain available for API routing and billing.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='PerformanceGroupMapping'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Performance display group')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map: source group → display group. Only one-hop mappings to visible groups are allowed. Performance source rules take priority when configured.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='PerformanceRules'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Performance source rules')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map of performance scopes to original group arrays. Explicit rules override legacy performance mapping; an empty array intentionally hides performance data.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='PerformanceFallbacks'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Performance fallback rules')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map of display scopes to whether the same group is used when configured sources have no samples.'
                     )}
                   </FormDescription>
                   <FormMessage />
