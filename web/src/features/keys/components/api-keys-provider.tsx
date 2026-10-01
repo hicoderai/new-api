@@ -20,6 +20,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import useDialogState from '@/hooks/use-dialog'
+import { formatApiKey } from '@/lib/api-key'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { fetchTokenKey, fetchTokenKeysBatch } from '../api'
@@ -83,7 +84,7 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
         try {
           const res = await fetchTokenKey(id)
           if (res.success && res.data?.key) {
-            const fullKey = `sk-${res.data.key}`
+            const fullKey = formatApiKey(res.data.key)
             setResolvedKeys((prev) => ({ ...prev, [id]: fullKey }))
             return fullKey
           }
@@ -126,7 +127,7 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
         if (res.success && res.data?.keys) {
           const newKeys: Record<number, string> = {}
           for (const [idStr, key] of Object.entries(res.data.keys)) {
-            newKeys[Number(idStr)] = `sk-${key}`
+            newKeys[Number(idStr)] = formatApiKey(key)
           }
           setResolvedKeys((prev) => ({ ...prev, ...newKeys }))
 

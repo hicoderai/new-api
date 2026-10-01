@@ -299,7 +299,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
 			key = strings.TrimSpace(key[7:])
 		}
-		key = strings.TrimPrefix(key, "sk-")
+		key = common.StripTokenKeyPrefix(key)
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
@@ -407,11 +407,11 @@ func TokenAuth() func(c *gin.Context) {
 			if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
 				key = strings.TrimSpace(key[7:])
 			}
-			key = strings.TrimPrefix(key, "sk-")
+			key = common.StripTokenKeyPrefix(key)
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		} else {
-			key = strings.TrimPrefix(key, "sk-")
+			key = common.StripTokenKeyPrefix(key)
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		}

@@ -52,6 +52,7 @@ import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
+import { formatApiKey } from '@/lib/api-key'
 import { handleServerError } from '@/lib/handle-server-error'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
@@ -165,7 +166,7 @@ function getPreferredKey(keys: ApiKey[]): ApiKey | null {
 }
 
 function formatDisplayKey(key?: string): string {
-  if (!key) return 'sk-...'
+  if (!key) return 'hicoder-...'
   if (key.length <= 14) return key
   return `${key.slice(0, 7)}...${key.slice(-4)}`
 }
@@ -306,7 +307,7 @@ function RequestPreview(props: {
 
       const realCurl = buildCurlCommand({
         endpoint: props.example.endpoint,
-        apiKey: `sk-${key}`,
+        apiKey: formatApiKey(key),
         model: props.example.model,
       })
       const copied = await copyToClipboard(realCurl)
@@ -603,8 +604,8 @@ export function OverviewDashboard() {
       keyName,
       keyId: preferredKey?.id,
       displayKey: preferredKey
-        ? formatDisplayKey(`sk-${preferredKey.key}`)
-        : 'sk-...',
+        ? formatDisplayKey(formatApiKey(preferredKey.key))
+        : 'hicoder-...',
       ready,
     }
   }, [apiInfoItems, modelsQuery.data, preferredKey, t])

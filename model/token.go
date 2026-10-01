@@ -74,11 +74,17 @@ func MaskTokenKey(key string) string {
 }
 
 func (token *Token) GetFullKey() string {
-	return token.Key
+	if token.Key == "" {
+		return ""
+	}
+	return common.TokenKeyPrefix + token.Key
 }
 
 func (token *Token) GetMaskedKey() string {
-	return MaskTokenKey(token.Key)
+	if token.Key == "" {
+		return ""
+	}
+	return common.TokenKeyPrefix + MaskTokenKey(token.Key)
 }
 
 func (token *Token) GetIpLimits() []string {
@@ -166,7 +172,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	}
 
 	if token != "" {
-		token = strings.TrimPrefix(token, "sk-")
+		token = common.StripTokenKeyPrefix(token)
 	}
 
 	// 超量用户（令牌数超过上限）只允许精确搜索，禁止模糊搜索

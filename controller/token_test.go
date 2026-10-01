@@ -585,6 +585,123 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	}
 }
 
+func TestHiCoderTokenPrefixDatabaseMatrix(t *testing.T) {
+	for _, database := range []struct {
+		name, env string
+		typ       common.DatabaseType
+	}{
+		{"sqlite", "", common.DatabaseTypeSQLite},
+		{"mysql", "AUDIT_MYSQL_DSN", common.DatabaseTypeMySQL},
+		{"postgres", "AUDIT_POSTGRES_DSN", common.DatabaseTypePostgreSQL},
+	} {
+		t.Run(database.name, func(t *testing.T) {
+			dsn := os.Getenv(database.env)
+			if database.env != "" && dsn == "" {
+				t.Skip(database.env + " is not configured")
+			}
+			previousDB, previousLogDB := model.DB, model.LOG_DB
+			previousMain, previousLog := common.MainDatabaseType(), common.LogDatabaseType()
+			previousRedis := common.RedisEnabled
+			t.Cleanup(func() {
+				model.DB, model.LOG_DB = previousDB, previousLogDB
+				common.SetDatabaseTypes(previousMain, previousLog)
+				common.RedisEnabled = previousRedis
+			})
+			db, _ := newAuditTestDatabase(t, database.name, dsn)
+			model.DB, model.LOG_DB = db, db
+			common.SetDatabaseTypes(database.typ, database.typ)
+			common.RedisEnabled = false
+			t.Setenv("LOG_SQL_DSN", "")
+			require.NoError(t, model.InitLogDB())
+			require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+			user := &model.User{Username: "prefix-owner", Password: "placeholder", Status: common.UserStatusEnabled, Role: common.RoleCommonUser, Group: "default", AffCode: "prefix-owner"}
+			require.NoError(t, db.Create(user).Error)
+			ctx, response := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{"name": "prefix-key", "unlimited_quota": true, "expired_time": -1}, user.Id)
+			AddToken(ctx)
+			require.True(t, decodeAPIResponse(t, response).Success)
+			var token model.Token
+			require.NoError(t, db.Where("user_id = ? AND name = ?", user.Id, "prefix-key").First(&token).Error)
+			assert.Len(t, token.Key, 48, "the public prefix must not change the stored random secret")
+			keyContext, keyResponse := newAuthenticatedContext(t, http.MethodPost, "/api/token/key", nil, user.Id)
+			keyContext.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+			GetTokenKey(keyContext)
+			var key tokenKeyResponse
+			require.NoError(t, common.Unmarshal(decodeAPIResponse(t, keyResponse).Data, &key))
+			assert.Equal(t, "hicoder-"+token.Key, key.Key)
+			assert.Equal(t, "hicoder-"+model.MaskTokenKey(token.Key), token.GetMaskedKey())
+			for _, prefix := range []string{"hicoder-", "sk-", ""} {
+				searchContext, searchResponse := newAuthenticatedContext(t, http.MethodGet, "/api/token/search?token="+prefix+token.Key, nil, user.Id)
+				SearchTokens(searchContext)
+				var page tokenPageResponse
+				require.NoError(t, common.Unmarshal(decodeAPIResponse(t, searchResponse).Data, &page))
+				require.Len(t, page.Items, 1)
+				assert.Equal(t, token.Id, page.Items[0].ID)
+				assert.NotContains(t, searchResponse.Body.String(), token.Key)
+			}
+			usageContext, usageResponse := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token", nil, user.Id)
+			usageContext.Request.Header.Set("Authorization", "Bearer hicoder-"+token.Key)
+			GetTokenUsage(usageContext)
+			assert.Equal(t, http.StatusOK, usageResponse.Code)
+			assert.Contains(t, usageResponse.Body.String(), "token_usage")
+			assert.NotContains(t, usageResponse.Body.String(), token.Key)
+			var version string
+			versionSQL := "SELECT version()"
+			if database.name == "sqlite" {
+				versionSQL = "SELECT sqlite_version()"
+			}
+			require.NoError(t, db.Raw(versionSQL).Scan(&version).Error)
+			t.Logf("database version: %s", version)
+
+			router := gin.New()
+			router.GET("/v1/models", middleware.TokenAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+			router.GET("/v1/messages", middleware.TokenAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+			router.GET("/readonly", middleware.TokenAuthReadOnly(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+			for _, tc := range []struct {
+				name, path, header, credential string
+				want                           int
+			}{
+				{"new bearer", "/v1/models", "Authorization", "Bearer hicoder-" + token.Key, 204},
+				{"legacy bearer", "/v1/models", "Authorization", "Bearer sk-" + token.Key, 204},
+				{"raw bearer", "/v1/models", "Authorization", "Bearer " + token.Key, 204},
+				{"anthropic", "/v1/messages", "x-api-key", "hicoder-" + token.Key, 204},
+				{"gemini", "/v1/models", "x-goog-api-key", "hicoder-" + token.Key, 204},
+				{"realtime", "/v1/models", "Sec-WebSocket-Protocol", "realtime, openai-insecure-api-key.hicoder-" + token.Key, 204},
+				{"readonly", "/readonly", "Authorization", "Bearer hicoder-" + token.Key, 204},
+				{"empty body", "/v1/models", "Authorization", "Bearer hicoder-", 401},
+				{"double prefix", "/v1/models", "Authorization", "Bearer hicoder-sk-" + token.Key, 401},
+				{"unknown prefix", "/v1/models", "Authorization", "Bearer other-" + token.Key, 401},
+				{"wrong secret", "/v1/models", "Authorization", "Bearer hicoder-invalid", 401},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					request := httptest.NewRequest(http.MethodGet, tc.path, nil)
+					request.Header.Set(tc.header, tc.credential)
+					response := httptest.NewRecorder()
+					router.ServeHTTP(response, request)
+					assert.Equal(t, tc.want, response.Code)
+					assert.NotContains(t, response.Body.String(), token.Key)
+				})
+			}
+			for _, tc := range []struct {
+				name    string
+				status  int
+				expired int64
+			}{
+				{"disabled", common.TokenStatusDisabled, -1},
+				{"expired", common.TokenStatusEnabled, time.Now().Add(-time.Hour).Unix()},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					require.NoError(t, db.Model(&token).Updates(map[string]any{"status": tc.status, "expired_time": tc.expired}).Error)
+					request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+					request.Header.Set("Authorization", "Bearer hicoder-"+token.Key)
+					response := httptest.NewRecorder()
+					router.ServeHTTP(response, request)
+					assert.Equal(t, http.StatusUnauthorized, response.Code)
+				})
+			}
+		})
+	}
+}
+
 func TestAPITokenAuditDatabaseMatrix(t *testing.T) {
 	for _, database := range []struct {
 		name, env string

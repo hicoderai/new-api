@@ -21,6 +21,7 @@ import { t } from 'i18next'
 
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import { API_KEY_STATUS } from '@/features/keys/constants'
+import { formatApiKey } from '@/lib/api-key'
 import {
   requireServerSuccess,
   createServerError,
@@ -44,7 +45,7 @@ export async function fetchActiveChatKey() {
     throw createServerError(keyResult, t('Failed to load API keys'))
   }
 
-  return `sk-${keyResult.data.key}`
+  return formatApiKey(keyResult.data.key)
 }
 
 /**

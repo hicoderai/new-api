@@ -80,9 +80,12 @@ await i18n.init({
 const clients: QueryClient[] = []
 
 function QuotaTable(props: { apiKey: ApiKey }) {
+  'use no memo' // TanStack Table exposes mutable callbacks in this test fixture.
+
   const columns = useApiKeysColumns(now).filter(
     (column) => column.id === 'quota'
   )
+  // oxlint-disable-next-line react/incompatible-library -- This fixture opts out of compiler memoization above.
   const table = useReactTable({
     columns,
     data: [props.apiKey],
@@ -437,7 +440,7 @@ it.each([true, false])(
     await waitFor(() => expect(post).toHaveBeenCalledWith('/api/token/7/key'))
     if (success) {
       await waitFor(() =>
-        expect(copy).toHaveBeenCalledWith('sk-fake-key-for-test-only')
+        expect(copy).toHaveBeenCalledWith('hicoder-fake-key-for-test-only')
       )
     } else {
       await screen.findByText('Verification required')

@@ -35,6 +35,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatApiKey } from '@/lib/api-key'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 import type { ApiKey } from '../types'
@@ -54,7 +55,7 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
   const isLoading = !!loadingKeys[apiKey.id]
   const resolvedFullKey = resolvedKeys[apiKey.id]
   const isCopied = copiedKeyId === apiKey.id
-  const maskedKey = `sk-${apiKey.key}`
+  const maskedKey = formatApiKey(apiKey.key)
 
   const handlePopoverOpen = useCallback(
     (open: boolean) => {

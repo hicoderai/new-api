@@ -16,29 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatApiKey } from '@/lib/api-key'
 
-export function sendToFluent(apiKey: string, serverAddress?: string): boolean {
-  if (typeof window === 'undefined') {
-    return false
+export function formatApiKey(key: string): string {
+  const trimmed = key.trim()
+  if (!trimmed) return ''
+  if (trimmed.startsWith('hicoder-') || trimmed.startsWith('sk-')) {
+    return trimmed
   }
-
-  const container = document.getElementById('fluent-new-api-container')
-  if (!container) {
-    return false
-  }
-
-  const payload = {
-    id: 'new-api',
-    baseUrl: serverAddress || window.location.origin,
-    apiKey: formatApiKey(apiKey),
-  }
-
-  container.dispatchEvent(
-    new CustomEvent('fluent:prefill', {
-      detail: payload,
-    })
-  )
-
-  return true
+  return `hicoder-${trimmed}`
 }

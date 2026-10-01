@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { API_KEY_STATUS } from '@/features/keys/constants'
+import { formatApiKey } from '@/lib/api-key'
 
 export type ChatLinkType = 'web' | 'custom-protocol' | 'fluent'
 
@@ -144,12 +145,6 @@ function replaceToken(source: string, token: string, value: string) {
   return source.split(token).join(value)
 }
 
-function normalizeApiKey(apiKey: string): string {
-  const trimmed = apiKey.trim()
-  if (!trimmed) return ''
-  return trimmed.startsWith('sk-') ? trimmed : `sk-${trimmed}`
-}
-
 export function resolveChatUrl({
   template,
   apiKey,
@@ -158,7 +153,7 @@ export function resolveChatUrl({
   let url = template
   const safeServerAddress = serverAddress || ''
 
-  const safeApiKey = normalizeApiKey(apiKey || '')
+  const safeApiKey = formatApiKey(apiKey || '')
 
   if (url.includes('{cherryConfig}')) {
     const payload = {

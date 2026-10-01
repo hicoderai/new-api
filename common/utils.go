@@ -256,6 +256,17 @@ func GenerateKey() (string, error) {
 	return GenerateRandomCharsKey(48)
 }
 
+const TokenKeyPrefix = "hicoder-"
+
+// StripTokenKeyPrefix removes one public prefix without changing the stored secret.
+// Legacy sk- credentials remain valid; nested prefixes are not normalized twice.
+func StripTokenKeyPrefix(key string) string {
+	if secret, ok := strings.CutPrefix(key, TokenKeyPrefix); ok {
+		return secret
+	}
+	return strings.TrimPrefix(key, "sk-")
+}
+
 func GetRandomInt(max int) int {
 	//rand.Seed(time.Now().UnixNano())
 	return rand.Intn(max)
