@@ -283,7 +283,7 @@ export function AnimatedBeam() {
           <PillNode
             ref={gptSolRef}
             href="https://openai.com/zh-Hans-CN/api/"
-            label="gpt-5.6-sol"
+            label="gpt-6.1-sol"
             iconSrc="/logo/chatgpt.svg"
             iconPosition="left"
           />
@@ -297,7 +297,7 @@ export function AnimatedBeam() {
           <PillNode
             ref={geminiFlashRef}
             href="https://ai.google.dev/gemini-api/docs"
-            label="gemini-3.6-flash"
+            label="gemini-3.8-flash"
             iconSrc="/logo/gemini.svg"
             iconPosition="left"
           />

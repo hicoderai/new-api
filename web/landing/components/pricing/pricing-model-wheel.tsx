@@ -120,7 +120,7 @@ export function PricingModelWheel({ models }: PricingModelWheelProps) {
                     initial="initial"
                     animate="animate"
                     exit="exit"
-                    className="relative origin-top-right list-none space-y-3 will-change-[transform,opacity,filter] lg:absolute lg:inset-x-0 lg:top-0 lg:origin-top-left"
+                    className="relative origin-top-right list-none space-y-3 will-change-[transform,opacity,filter] lg:origin-top-left"
                   >
                     {selectedModel.availableModels.map((model) => (
                       <li
