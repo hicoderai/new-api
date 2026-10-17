@@ -6,6 +6,7 @@ export const createEmailSchema = (t: (key: string) => string) =>
       EmailProvider: z.enum(['smtp', 'resend']),
       ResendApiKey: z.string(),
       ResendFrom: z.string(),
+      ResendSenderName: z.string(),
       SMTPServer: z.string(),
       SMTPPort: z.string(),
       SMTPAccount: z.string(),
@@ -19,13 +20,20 @@ export const createEmailSchema = (t: (key: string) => string) =>
     .superRefine((values, context) => {
       if (values.EmailProvider === 'resend') {
         const from = values.ResendFrom.trim()
-        const named = from.match(/^[^<>\r\n]+<([^<>]+)>$/)
-        const email = named ? named[1].trim() : from
-        if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email)) {
+        if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(from)) {
           context.addIssue({
             code: 'custom',
             path: ['ResendFrom'],
             message: t('Enter a valid sender email address'),
+          })
+        }
+        if (/[\r\n\0]/.test(values.ResendSenderName)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['ResendSenderName'],
+            message: t(
+              'Sender name must not contain line breaks or null characters'
+            ),
           })
         }
         return
@@ -52,3 +60,14 @@ export const createEmailSchema = (t: (key: string) => string) =>
     })
 
 export type EmailFormValues = z.infer<ReturnType<typeof createEmailSchema>>
+
+// Keep the existing ResendFrom option/API contract while editing its two parts.
+export function parseResendSender(value: string) {
+  const named = value.trim().match(/^(.*?)\s*<([^<>]+)>$/)
+  if (!named) return { ResendFrom: value.trim(), ResendSenderName: '' }
+  let name = named[1].trim()
+  if (name.startsWith('"') && name.endsWith('"')) {
+    name = name.slice(1, -1).replaceAll(/\\(.)/g, '$1')
+  }
+  return { ResendFrom: named[2].trim(), ResendSenderName: name }
+}

@@ -81,16 +81,20 @@ describe('email delivery settings', () => {
       .mockResolvedValue({ data: { success: true } })
     const user = renderEmail({ SMTPPort: 'invalid', SMTPFrom: 'invalid' })
     await user.click(screen.getByRole('radio', { name: 'Resend API' }))
-    const from = screen.getByRole('textbox', { name: 'Resend sender' })
+    const from = screen.getByRole('textbox', { name: 'Sender email address' })
     await user.clear(from)
-    await user.type(from, 'HiCoder <mail@example.com>')
+    await user.type(from, 'mail@example.com')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Sender name' }),
+      'HiCoder'
+    )
     await user.type(screen.getByLabelText('Resend API key'), 'test-key')
     await user.click(
       screen.getByRole('button', { name: 'Save email settings' })
     )
     await waitFor(() => expect(request).toHaveBeenCalledTimes(3))
     expect(request.mock.calls.map((call) => call[1])).toEqual([
-      { key: 'ResendFrom', value: 'HiCoder <mail@example.com>' },
+      { key: 'ResendFrom', value: '"HiCoder" <mail@example.com>' },
       { key: 'ResendApiKey', value: 'test-key' },
       { key: 'EmailProvider', value: 'resend' },
     ])
@@ -104,7 +108,7 @@ describe('email delivery settings', () => {
       .spyOn(api, 'put')
       .mockResolvedValue({ data: { success: true } })
     const user = renderEmail({ EmailProvider: 'resend' })
-    const from = screen.getByRole('textbox', { name: 'Resend sender' })
+    const from = screen.getByRole('textbox', { name: 'Sender email address' })
     await user.clear(from)
     await user.type(from, 'changed@example.com')
     await user.click(
@@ -115,6 +119,28 @@ describe('email delivery settings', () => {
       key: 'ResendFrom',
       value: 'changed@example.com',
     })
+  })
+
+  it('retains both Resend sender drafts when switching providers', async () => {
+    const user = renderEmail({ EmailProvider: 'resend' })
+    const from = screen.getByRole('textbox', { name: 'Sender email address' })
+    await user.clear(from)
+    await user.type(from, 'notify@another.example')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Sender name' }),
+      'HiCoder 通知'
+    )
+    await user.click(screen.getByRole('radio', { name: 'SMTP' }))
+    expect(
+      screen.queryByRole('textbox', { name: 'Sender name' })
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: 'Resend API' }))
+    expect(
+      screen.getByRole('textbox', { name: 'Sender email address' })
+    ).toHaveValue('notify@another.example')
+    expect(screen.getByRole('textbox', { name: 'Sender name' })).toHaveValue(
+      'HiCoder 通知'
+    )
   })
 
   it('switches back to SMTP without clearing or updating Resend credentials', async () => {
@@ -173,15 +199,105 @@ describe('email delivery settings', () => {
     await user.click(screen.getByRole('radio', { name: 'SMTP' }))
     await user.keyboard('{ArrowRight}')
     expect(screen.getByRole('radio', { name: 'Resend API' })).toBeChecked()
-    expect(screen.getByRole('textbox', { name: 'Resend sender' })).toBeVisible()
+    expect(
+      screen.getByRole('textbox', { name: 'Sender email address' })
+    ).toBeVisible()
   })
+
+  it('loads a legacy named sender into two fields without changing saved settings', async () => {
+    const request = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = renderEmail({
+      EmailProvider: 'resend',
+      ResendFrom: 'HiCoder <notify@example.com>',
+    })
+    expect(
+      screen.getByRole('textbox', { name: 'Sender email address' })
+    ).toHaveValue('notify@example.com')
+    expect(screen.getByRole('textbox', { name: 'Sender name' })).toHaveValue(
+      'HiCoder'
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Save email settings' })
+    )
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('round-trips quoted sender names and allows clearing the name', async () => {
+    const request = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = renderEmail({
+      EmailProvider: 'resend',
+      ResendFrom: '"HiCoder, \\"Mail\\"" <notify@example.com>',
+    })
+    const name = screen.getByRole('textbox', { name: 'Sender name' })
+    expect(name).toHaveValue('HiCoder, "Mail"')
+    await user.clear(name)
+    await user.type(name, 'HiCoder, "Support"')
+    await user.click(
+      screen.getByRole('button', { name: 'Save email settings' })
+    )
+    await waitFor(() =>
+      expect(request).toHaveBeenLastCalledWith('/api/option/', {
+        key: 'ResendFrom',
+        value: '"HiCoder, \\"Support\\"" <notify@example.com>',
+      })
+    )
+    await user.clear(name)
+    await user.click(
+      screen.getByRole('button', { name: 'Save email settings' })
+    )
+    await waitFor(() =>
+      expect(request).toHaveBeenLastCalledWith('/api/option/', {
+        key: 'ResendFrom',
+        value: 'notify@example.com',
+      })
+    )
+  })
+
+  it.each(['notify', 'HiCoder <notify@example.com>'])(
+    'rejects %s instead of a complete standalone sender email',
+    async (address) => {
+      const request = vi
+        .spyOn(api, 'put')
+        .mockResolvedValue({ data: { success: true } })
+      const user = renderEmail({ EmailProvider: 'resend' })
+      const from = screen.getByRole('textbox', { name: 'Sender email address' })
+      await user.clear(from)
+      await user.type(from, address)
+      await user.click(
+        screen.getByRole('button', { name: 'Save email settings' })
+      )
+      expect(
+        await screen.findByText('Enter a valid sender email address')
+      ).toBeVisible()
+      expect(request).not.toHaveBeenCalled()
+    }
+  )
 
   it('validates provider values on the form boundary', () => {
     expect(
       createEmailSchema((key) => key).safeParse({
         ...defaults,
+        ResendSenderName: '',
         EmailProvider: 'both',
       }).success
     ).toBe(false)
+  })
+
+  it('rejects line breaks in a Resend sender name', () => {
+    const parsed = createEmailSchema((key) => key).safeParse({
+      ...defaults,
+      EmailProvider: 'resend',
+      ResendSenderName: 'HiCoder\r\nBcc: other@example.com',
+    })
+    expect(parsed.success).toBe(false)
+    if (!parsed.success) {
+      expect(parsed.error.issues).toEqual([
+        expect.objectContaining({ path: ['ResendSenderName'] }),
+      ])
+    }
   })
 })

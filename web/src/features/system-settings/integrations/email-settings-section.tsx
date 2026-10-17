@@ -47,11 +47,12 @@ import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import {
   createEmailSchema,
+  parseResendSender,
   type EmailFormValues,
 } from './email-settings-schema'
 
 type EmailSettingsSectionProps = {
-  defaultValues: EmailFormValues
+  defaultValues: Omit<EmailFormValues, 'ResendSenderName'>
 }
 
 type SmtpSecurityMode = 'none' | 'ssl_tls' | 'starttls'
@@ -71,10 +72,14 @@ export function EmailSettingsSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const emailSchema = createEmailSchema(t)
+  const initialValues = {
+    ...defaultValues,
+    ...parseResendSender(defaultValues.ResendFrom),
+  }
 
   const form = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
-    defaultValues,
+    defaultValues: initialValues,
   })
 
   const [provider, smtpSSL, smtpStartTLS] = useWatch({
@@ -82,7 +87,7 @@ export function EmailSettingsSection({
     name: ['EmailProvider', 'SMTPSSLEnabled', 'SMTPStartTLSEnabled'],
   })
   const isSaving = form.formState.isSubmitting || updateOption.isPending
-  useResetForm(form, isSaving ? undefined : defaultValues)
+  useResetForm(form, isSaving ? undefined : initialValues)
 
   const onSubmit = async (values: EmailFormValues) => {
     const securityMode = getSmtpSecurityMode(values)
@@ -114,8 +119,16 @@ export function EmailSettingsSection({
 
     if (values.EmailProvider === 'resend') {
       const from = values.ResendFrom.trim()
-      if (from !== defaultValues.ResendFrom.trim()) {
-        updates.push({ key: 'ResendFrom', value: from })
+      const name = values.ResendSenderName.trim()
+      if (
+        from !== initialValues.ResendFrom ||
+        name !== initialValues.ResendSenderName
+      ) {
+        // Quote display names so commas, quotes and angle brackets stay text,
+        // not mailbox syntax. The server also validates the combined address.
+        const escapedName = name.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+        const sender = name ? `"${escapedName}" <${from}>` : from
+        updates.push({ key: 'ResendFrom', value: sender })
       }
       const key = values.ResendApiKey.trim()
       if (key) updates.push({ key: 'ResendApiKey', value: key })
@@ -242,18 +255,42 @@ export function EmailSettingsSection({
                 name='ResendFrom'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Resend sender')}</FormLabel>
+                    <FormLabel>{t('Sender email address')}</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
                         autoComplete='off'
                         disabled={isSaving}
-                        placeholder='HiCoder <noreply@example.com>'
+                        type='email'
+                        placeholder='noreply@example.com'
                       />
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Use an address on a domain verified in Resend. Display names are supported.'
+                        'Enter the complete email address, including a domain verified in Resend. No domain is added automatically.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='ResendSenderName'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Sender name')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete='off'
+                        disabled={isSaving}
+                        placeholder='HiCoder'
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'The name recipients see. Leave blank to use the site name.'
                       )}
                     </FormDescription>
                     <FormMessage />
