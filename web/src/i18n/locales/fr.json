@@ -1201,6 +1201,7 @@
     "Configure a new custom OAuth provider for user authentication.": "Configurer un nouveau fournisseur OAuth personnalisé pour l'authentification des utilisateurs.",
     "Configure a payment method for user recharge options.": "Configurer un mode de paiement pour les options de recharge utilisateur.",
     "Configure a predefined chat link for end users.": "Configurer un lien de chat prédéfini pour les utilisateurs finaux.",
+    "Configure a Resend API key before enabling Resend": "Configurez une clé API Resend avant d’activer Resend",
     "Configure an input price before converting this model.": "Configurez un prix d’entrée avant de convertir ce modèle.",
     "Configure and deploy a new container instance.": "Configurer et déployer une nouvelle instance de conteneur.",
     "Configure API documentation links for the dashboard": "Configurer les liens de documentation API pour le tableau de bord",

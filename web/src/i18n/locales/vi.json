@@ -1201,6 +1201,7 @@
     "Configure a new custom OAuth provider for user authentication.": "Cấu hình nhà cung cấp OAuth tùy chỉnh mới để xác thực người dùng.",
     "Configure a payment method for user recharge options.": "Cấu hình phương thức thanh toán cho các tùy chọn nạp tiền của người dùng.",
     "Configure a predefined chat link for end users.": "Cấu hình một liên kết trò chuyện được xác định trước cho người dùng cuối.",
+    "Configure a Resend API key before enabling Resend": "Cấu hình khóa API Resend trước khi bật Resend",
     "Configure an input price before converting this model.": "Hãy cấu hình giá đầu vào trước khi chuyển đổi mô hình này.",
     "Configure and deploy a new container instance.": "Cấu hình và triển khai một phiên bản container mới.",
     "Configure API documentation links for the dashboard": "Cấu hình các liên kết tài liệu API cho bảng điều khiển",

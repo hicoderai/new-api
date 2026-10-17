@@ -1201,6 +1201,7 @@
     "Configure a new custom OAuth provider for user authentication.": "Настройка нового пользовательского OAuth-провайдера для аутентификации пользователей.",
     "Configure a payment method for user recharge options.": "Настройте способ оплаты для опций пополнения счета пользователя.",
     "Configure a predefined chat link for end users.": "Настройте предопределенную ссылку для чата для конечных пользователей.",
+    "Configure a Resend API key before enabling Resend": "Настройте API-ключ Resend перед включением Resend",
     "Configure an input price before converting this model.": "Перед преобразованием модели настройте цену ввода.",
     "Configure and deploy a new container instance.": "Настройте и разверните новый экземпляр контейнера.",
     "Configure API documentation links for the dashboard": "Настроить ссылки на документацию API для панели управления",

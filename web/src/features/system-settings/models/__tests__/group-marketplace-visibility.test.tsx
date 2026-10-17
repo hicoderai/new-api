@@ -401,6 +401,72 @@ describe('group marketplace visibility', () => {
     ).toEqual({ default: true })
   })
 
+  it('allows global fallback with empty default sources while explicit empty group sources remain disabled', async () => {
+    render(
+      <Harness initialRules='{"default":[],"group:default":["internal"]}' />
+    )
+    const user = userEvent.setup()
+    const globalFallback = screen.getByRole('combobox', {
+      name: 'Default fallback to the selected group',
+    })
+    expect(globalFallback).toBeEnabled()
+    await user.click(globalFallback)
+    await user.click(
+      screen.getByRole('option', {
+        name: 'Use this group if sources have no data',
+      })
+    )
+    expect(
+      screen.getByRole('combobox', {
+        name: 'Fallback to default when sources have no data',
+      })
+    ).toHaveValue('Follow global fallback: Enabled')
+    expect(
+      screen.getByRole('combobox', {
+        name: 'Fallback to internal when sources have no data',
+      })
+    ).toBeDisabled()
+    expect(
+      JSON.parse(
+        screen.getByLabelText('Saved performance fallbacks').textContent ?? '{}'
+      )
+    ).toEqual({ default: true })
+  })
+
+  it('preserves a mixed legacy and explicit configuration when removing stale groups', () => {
+    const values = {
+      ...validGroupFormValues,
+      GroupRatio:
+        '{"stable":0.24,"internal":0,"domestic":0.55,"vendor":0.6,"benefit":0.5}',
+      HiddenGroups: '{"internal":true}',
+      PerformanceGroupMapping: '{"internal":"stable"}',
+      PerformanceRules:
+        '{"group:removed":[],"group:stable":["stable","internal"],"group:vendor":["vendor","domestic","internal"],"group:domestic":["domestic","internal"],"group:benefit":["vendor","benefit"]}',
+      AutoGroups: '["removed"]',
+    }
+    const migrated = { ...values, ...normalizeGroupPerformanceConfig(values) }
+    expect(JSON.parse(migrated.PerformanceRules)).toEqual({
+      'group:stable': ['stable', 'internal'],
+      'group:vendor': ['vendor', 'domestic', 'internal'],
+      'group:domestic': ['domestic', 'internal'],
+      'group:benefit': ['vendor', 'benefit'],
+    })
+    expect(JSON.parse(migrated.AutoGroups)).toEqual([])
+    for (const key of [
+      'GroupRatio',
+      'HiddenGroups',
+      'PerformanceGroupMapping',
+      'UserUsableGroups',
+      'DefaultUseAutoGroup',
+      'GroupGroupRatio',
+    ] as const) {
+      expect(migrated[key]).toEqual(values[key])
+    }
+    expect(normalizeGroupPerformanceConfig(migrated)).toEqual(
+      normalizeGroupPerformanceConfig(values)
+    )
+  })
+
   it('renames and deletes group fallback overrides with their pricing group', async () => {
     render(<Harness initialFallbacks='{"group:default":true}' />)
     const user = userEvent.setup()

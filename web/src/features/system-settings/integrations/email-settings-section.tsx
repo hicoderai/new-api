@@ -191,6 +191,9 @@ export function EmailSettingsSection({
     try {
       for (const update of updates) {
         await updateOption.mutateAsync(update)
+        if (update.key === 'ResendApiKey') {
+          form.setValue('ResendKeyConfigured', true)
+        }
       }
       form.setValue('ResendApiKey', '')
     } catch (error) {

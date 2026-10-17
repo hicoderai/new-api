@@ -146,6 +146,7 @@ func TestEmailOptionsNeverReturnResendCredentials(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "private-email-credential")
 	assert.NotContains(t, response.Body.String(), "ResendApiKey")
 	assert.Contains(t, response.Body.String(), "ResendFrom")
+	assert.Contains(t, response.Body.String(), `"key":"ResendKeyConfigured","value":"true"`)
 }
 
 func TestEmailProviderOptionRejectsInvalidValues(t *testing.T) {
@@ -163,4 +164,42 @@ func TestEmailProviderOptionRejectsInvalidValues(t *testing.T) {
 			assert.Equal(t, "smtp", common.OptionMap["EmailProvider"])
 		})
 	}
+}
+
+func TestEmailProviderCannotActivateIncompleteResend(t *testing.T) {
+	for name, settings := range map[string]map[string]string{
+		"missing key":    {"ResendFrom": "sender@example.com"},
+		"missing sender": {"ResendApiKey": "test-key"},
+		"invalid sender": {"ResendApiKey": "test-key", "ResendFrom": "invalid"},
+		"invalid key":    {"ResendApiKey": "key\r\nInjected: value", "ResendFrom": "sender@example.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			settings["EmailProvider"] = "smtp"
+			configureEmailDelivery(t, settings)
+			response := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(response)
+			context.Request = httptest.NewRequest(http.MethodPut, "/api/option/", strings.NewReader(`{"key":"EmailProvider","value":"resend"}`))
+			require.NotPanics(t, func() { UpdateOption(context) }, "invalid activation must fail before accessing storage")
+			assert.Contains(t, response.Body.String(), `"success":false`)
+			assert.Equal(t, "smtp", common.OptionMap["EmailProvider"])
+			assert.NotContains(t, response.Body.String(), "test-key")
+		})
+	}
+}
+
+func TestEmailKeyStatusIsDerivedAndReadOnly(t *testing.T) {
+	configureEmailDelivery(t, map[string]string{"EmailProvider": "smtp", "ResendKeyConfigured": "true"})
+	response := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(response)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/option/", nil)
+	GetOptions(context)
+	assert.Contains(t, response.Body.String(), `"key":"ResendKeyConfigured","value":"false"`)
+	assert.NotContains(t, response.Body.String(), `"value":"true"`)
+
+	response = httptest.NewRecorder()
+	context, _ = gin.CreateTestContext(response)
+	context.Request = httptest.NewRequest(http.MethodPut, "/api/option/", strings.NewReader(`{"key":"ResendKeyConfigured","value":true}`))
+	UpdateOption(context)
+	assert.Contains(t, response.Body.String(), `"success":false`)
+	assert.Contains(t, response.Body.String(), "read-only")
 }

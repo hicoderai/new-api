@@ -67,6 +67,7 @@ const OPERATIONS_SECTIONS = [
         defaultValues={{
           EmailProvider: settings.EmailProvider,
           ResendApiKey: settings.ResendApiKey,
+          ResendKeyConfigured: settings.ResendKeyConfigured,
           ResendFrom: settings.ResendFrom,
           SMTPServer: settings.SMTPServer,
           SMTPPort: settings.SMTPPort,

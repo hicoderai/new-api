@@ -5,6 +5,7 @@ export const createEmailSchema = (t: (key: string) => string) =>
     .object({
       EmailProvider: z.enum(['smtp', 'resend']),
       ResendApiKey: z.string(),
+      ResendKeyConfigured: z.boolean(),
       ResendFrom: z.string(),
       ResendSenderName: z.string(),
       SMTPServer: z.string(),
@@ -19,6 +20,13 @@ export const createEmailSchema = (t: (key: string) => string) =>
     })
     .superRefine((values, context) => {
       if (values.EmailProvider === 'resend') {
+        if (!values.ResendKeyConfigured && !values.ResendApiKey.trim()) {
+          context.addIssue({
+            code: 'custom',
+            path: ['ResendApiKey'],
+            message: t('Configure a Resend API key before enabling Resend'),
+          })
+        }
         const from = values.ResendFrom.trim()
         if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(from)) {
           context.addIssue({

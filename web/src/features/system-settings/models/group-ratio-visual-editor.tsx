@@ -1231,6 +1231,7 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
                       })
                     : t('Default fallback to the selected group')
                   const noSources =
+                    row.groupName !== undefined &&
                     row.sources.length === 0 &&
                     (row.configured || row.inheritedFrom === 'default')
                   return (

@@ -1201,6 +1201,7 @@
     "Configure a new custom OAuth provider for user authentication.": "設定新的自訂 OAuth 供應商用於用戶認證。",
     "Configure a payment method for user recharge options.": "設定用於用戶儲值選項的支付方式。",
     "Configure a predefined chat link for end users.": "為終端用戶設定預先定義的聊天連結。",
+    "Configure a Resend API key before enabling Resend": "請先設定 Resend API 金鑰，再啟用 Resend",
     "Configure an input price before converting this model.": "請先設定輸入價格，再轉換此模型。",
     "Configure and deploy a new container instance.": "設定並部署一個新的容器實例。",
     "Configure API documentation links for the dashboard": "設定儀表板的 API 文件連結",

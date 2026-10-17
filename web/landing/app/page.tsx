@@ -63,10 +63,9 @@ export default function Home() {
               name: "ChatGPT",
               logoSrc: "/logo/chatgpt.svg",
               rates: [
-                { label: "稳定", multiplier: "0.24x" },
-                { label: "默认", multiplier: "0.15x" },
-                { label: "福利", multiplier: "0.09x" },
                 { label: "超高可用性", multiplier: "0.5x" },
+                { label: "稳定", multiplier: "0.24x" },
+                { label: "福利", multiplier: "0.09x" },
               ],
               availableModels: [
                 "GPT 6.1 Sol",
@@ -85,10 +84,7 @@ export default function Home() {
             {
               name: "Claude",
               logoSrc: "/logo/claude.svg",
-              rates: [
-                { label: "默认", multiplier: "0.9x" },
-                { label: "福利", multiplier: "0.5x" },
-              ],
+              rates: [{ label: "默认", multiplier: "0.9x" }],
               availableModels: [
                 "Fable 5",
                 "Opus 5",
@@ -124,13 +120,7 @@ export default function Home() {
                 { label: "Deepseek", multiplier: "0.6x" },
                 { label: "国模", multiplier: "0.55x" },
               ],
-              availableModels: [
-                "DeepSeek V4.1 Flash",
-                "DeepSeek V4 Pro",
-                "DeepSeek V4 Flash",
-                "DeepSeek V4 Flash 0731",
-                "DeepSeek Flash",
-              ],
+              availableModels: ["DeepSeek V4.1 Flash", "DeepSeek V4 Flash", "DeepSeek Flash"],
             },
             {
               name: "Doubao Seed",
@@ -144,7 +134,6 @@ export default function Home() {
                 "Doubao Seed 2.0 Lite",
                 "Doubao Seed 2.0 Mini",
                 "Doubao Seed Evolving",
-                "Doubao Seed Character",
                 "Doubao Seed Translation",
               ],
             },
@@ -155,25 +144,13 @@ export default function Home() {
                 { label: "智谱", multiplier: "0.6x" },
                 { label: "国模", multiplier: "0.55x" },
               ],
-              availableModels: ["GLM 5.3", "GLM 5.3 Flash", "GLM 5.2"],
+              availableModels: ["GLM 5.3 Flash", "GLM 5.2"],
             },
             {
               name: "Kimi",
               logoSrc: "/logo/kimi.svg",
               rates: [{ label: "国模", multiplier: "0.55x" }],
-              availableModels: ["Kimi K3", "Kimi K2.7 Code"],
-            },
-            {
-              name: "MiniMax",
-              logoSrc: "/logo/minimax.svg",
-              rates: [{ label: "国模", multiplier: "0.55x" }],
-              availableModels: ["MiniMax M3"],
-            },
-            {
-              name: "Qwen",
-              logoSrc: "/logo/qwen.svg",
-              rates: [{ label: "国模", multiplier: "0.55x" }],
-              availableModels: ["Qwen 3.8 Max", "Qwen 3.8 Flash", "Qwen 3.7 Max", "Qwen 3.7 Plus"],
+              availableModels: ["Kimi K3"],
             },
           ]}
         />
@@ -202,12 +179,7 @@ export default function Home() {
                 label: "心理陪伴",
                 icon: <IconHeartHandshake stroke={1.7} />,
                 color: "#f43f5e",
-                recommendedModels: [
-                  "情感 Claude Opus 4.6",
-                  "情感 D老师 v4flash",
-                  "Grok 4.5",
-                  "GPT 5.5",
-                ],
+                recommendedModels: ["Claude Opus 4.6", "DeepSeek V4 Flash", "Grok 4.5", "GPT 5.5"],
               },
               {
                 label: "办公协作",

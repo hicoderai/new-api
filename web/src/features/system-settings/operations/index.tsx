@@ -33,6 +33,7 @@ const defaultOperationsSettings: OperationsSettings = {
   QuotaRemindThreshold: '',
   EmailProvider: 'smtp',
   ResendApiKey: '',
+  ResendKeyConfigured: false,
   ResendFrom: '',
   SMTPServer: '',
   SMTPPort: '',

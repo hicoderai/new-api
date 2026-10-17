@@ -14,6 +14,7 @@ type EmailValues = ComponentProps<typeof EmailSettingsSection>['defaultValues']
 const defaults: EmailValues = {
   EmailProvider: 'smtp',
   ResendApiKey: '',
+  ResendKeyConfigured: true,
   ResendFrom: 'notify@example.com',
   SMTPServer: 'smtp.example.com',
   SMTPPort: '587',
@@ -49,6 +50,23 @@ function renderEmail(values: Partial<EmailValues> = {}) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('email delivery settings', () => {
+  it('requires a key before first activating Resend and does not disable SMTP', async () => {
+    const request = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = renderEmail({ ResendKeyConfigured: false })
+    await user.click(screen.getByRole('radio', { name: 'Resend API' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Save email settings' })
+    )
+    expect(
+      await screen.findByText(
+        'Configure a Resend API key before enabling Resend'
+      )
+    ).toBeVisible()
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('selects only one provider, hides inactive fields and retains SMTP drafts when switching back', async () => {
     const request = vi
       .spyOn(api, 'put')
@@ -79,7 +97,11 @@ describe('email delivery settings', () => {
     const request = vi
       .spyOn(api, 'put')
       .mockResolvedValue({ data: { success: true } })
-    const user = renderEmail({ SMTPPort: 'invalid', SMTPFrom: 'invalid' })
+    const user = renderEmail({
+      ResendKeyConfigured: false,
+      SMTPPort: 'invalid',
+      SMTPFrom: 'invalid',
+    })
     await user.click(screen.getByRole('radio', { name: 'Resend API' }))
     const from = screen.getByRole('textbox', { name: 'Sender email address' })
     await user.clear(from)
