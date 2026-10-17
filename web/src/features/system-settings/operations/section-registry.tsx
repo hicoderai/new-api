@@ -61,10 +61,13 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'email',
-    titleKey: 'SMTP Email',
+    titleKey: 'Email delivery',
     build: (settings: OperationsSettings) => (
       <EmailSettingsSection
         defaultValues={{
+          EmailProvider: settings.EmailProvider,
+          ResendApiKey: settings.ResendApiKey,
+          ResendFrom: settings.ResendFrom,
           SMTPServer: settings.SMTPServer,
           SMTPPort: settings.SMTPPort,
           SMTPAccount: settings.SMTPAccount,

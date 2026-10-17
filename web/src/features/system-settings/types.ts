@@ -380,6 +380,9 @@ export type OperationsSettings = {
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
   QuotaRemindThreshold: string
+  EmailProvider: 'smtp' | 'resend'
+  ResendApiKey: string
+  ResendFrom: string
   SMTPServer: string
   SMTPPort: string
   SMTPAccount: string

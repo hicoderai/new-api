@@ -689,13 +689,19 @@ function GroupPricingTable({
       const removedName = rows.find((row) => row._id === id)?.name.trim()
       emitRows(rows.filter((row) => row._id !== id))
       if (removedName) {
+        const rules = parsePerformanceRules(performanceRules)
+        delete rules[`group:${removedName}`]
+        for (const scope of Object.keys(rules)) {
+          rules[scope] = rules[scope].filter((source) => source !== removedName)
+        }
+        onChange('PerformanceRules', JSON.stringify(rules, null, 2))
         onChange(
           'PerformanceFallbacks',
           renamePerformanceFallback(performanceFallbacks, removedName)
         )
       }
     },
-    [emitRows, onChange, performanceFallbacks, rows]
+    [emitRows, onChange, performanceFallbacks, performanceRules, rows]
   )
 
   const duplicateNames = useMemo(() => {
@@ -731,7 +737,7 @@ function GroupPricingTable({
       <CardContent>
         <div className='space-y-3'>
           <StaticDataTable
-            tableClassName='min-w-[76rem]'
+            tableClassName='min-w-[62rem]'
             data={rows}
             getRowKey={(row) => row._id}
             emptyClassName='text-muted-foreground h-20 text-sm'
@@ -820,57 +826,6 @@ function GroupPricingTable({
                 ),
               },
               {
-                id: 'performance-group',
-                header: t('Performance display group'),
-                className: 'min-w-52',
-                cell: (row) => {
-                  const candidates = rows.filter(
-                    (target) =>
-                      target.name.trim() &&
-                      target._id !== row._id &&
-                      !target.hidden &&
-                      !target.performanceGroup
-                  )
-                  const unavailable =
-                    row.performanceGroup !== '' &&
-                    !candidates.some(
-                      (target) => target.name.trim() === row.performanceGroup
-                    )
-                  const hasSources = rows.some(
-                    (source) => source.performanceGroup === row.name.trim()
-                  )
-                  return (
-                    <div className='space-y-1'>
-                      <Combobox
-                        options={[
-                          { value: '', label: t('No merge') },
-                          ...candidates.map((target) => ({
-                            value: target.name.trim(),
-                            label: target.name.trim(),
-                          })),
-                        ]}
-                        value={row.performanceGroup}
-                        onValueChange={(value) =>
-                          updateRow(row._id, 'performanceGroup', value ?? '')
-                        }
-                        disabled={hasSources && !row.performanceGroup}
-                        aria-label={t(
-                          'Performance display group for {{group}}',
-                          { group: row.name }
-                        )}
-                        aria-invalid={unavailable}
-                        className='w-full'
-                      />
-                      {unavailable && (
-                        <p className='text-destructive text-xs'>
-                          {t('Target unavailable; performance data is hidden.')}
-                        </p>
-                      )}
-                    </div>
-                  )
-                },
-              },
-              {
                 id: 'description',
                 header: t('Description'),
                 className: 'min-w-56',
@@ -919,12 +874,6 @@ function GroupPricingTable({
               },
             ]}
           />
-
-          <p className='text-muted-foreground text-sm'>
-            {t(
-              'Performance mapping merges metrics for the same model into a visible group when no performance source rule applies. Hidden groups without a valid target are excluded. Billing, permissions and original logs stay unchanged. Targets cannot also be mapped.'
-            )}
-          </p>
 
           {duplicateNames.length > 0 && (
             <p className='text-destructive text-sm'>
@@ -1027,11 +976,7 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
       },
     ]
 
-    const configuredGroupNames = Object.keys(rules)
-      .filter((scope) => scope.startsWith('group:'))
-      .map((scope) => scope.slice('group:'.length))
-    const displayGroups = [...new Set([...groupNames, ...configuredGroupNames])]
-    for (const groupName of displayGroups) {
+    for (const groupName of groupNames) {
       const scope = `group:${groupName}`
       const configured = Object.hasOwn(rules, scope)
       const inheritsDefault = !configured && Object.hasOwn(rules, 'default')
@@ -1103,7 +1048,7 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
         <CardTitle>{t('Performance source rules')}</CardTitle>
         <CardDescription>
           {t(
-            'Choose the original groups whose metrics appear in each marketplace scope. Explicit rules take priority over the legacy performance mapping; selecting no sources intentionally shows no performance data.'
+            'Manage performance sources here only. Saving converts existing merges and removes deleted group references. Billing, routing and original logs stay unchanged.'
           )}
         </CardDescription>
       </CardHeader>
@@ -1117,30 +1062,54 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
               {
                 id: 'scope',
                 header: t('Marketplace scope'),
-                className: 'min-w-44',
+                className: 'w-56 min-w-44 max-w-56 whitespace-normal',
+                cellClassName: 'max-w-56 whitespace-normal',
                 cell: (row) => {
                   let label = row.groupName
                   if (row.scope === 'all') label = t('All groups view')
                   if (row.scope === 'default') {
-                    label = t('Default for display groups')
+                    label = t('Global default sources (not a group)')
                   }
                   const groupName = row.groupName
-                  const unknownGroup =
-                    groupName !== undefined && !groupNameSet.has(groupName)
                   const hiddenGroup =
                     groupName !== undefined && hiddenGroups[groupName] === true
+                  let sourceStatus = t('Existing sources')
+                  if (
+                    row.groupName &&
+                    row.sources.length === 1 &&
+                    row.sources[0] === row.groupName
+                  ) {
+                    sourceStatus = t('This group')
+                  }
+                  if (row.inheritedFrom === 'default') {
+                    sourceStatus = t('Inherits default rule')
+                  }
+                  if (row.inheritedFrom === 'legacy-all') {
+                    sourceStatus = t('Public group sources')
+                  }
+                  if (row.configured) sourceStatus = t('Explicit rule')
                   return (
                     <div className='flex flex-col items-start gap-1'>
-                      <div className='flex items-center gap-2'>
-                        <span className='font-medium'>{label}</span>
-                        {unknownGroup && <UnknownGroupBadge />}
+                      <span className='font-medium break-words'>{label}</span>
+                      <div className='flex flex-wrap items-center gap-1'>
+                        <StatusBadge
+                          variant={row.configured ? 'info' : 'neutral'}
+                          copyable={false}
+                        >
+                          {sourceStatus}
+                        </StatusBadge>
                         {hiddenGroup && (
                           <StatusBadge variant='neutral' copyable={false}>
                             {t('Hidden from marketplace')}
                           </StatusBadge>
                         )}
                       </div>
-                      {(unknownGroup || hiddenGroup) && (
+                      {row.configured && row.sources.length === 0 && (
+                        <span className='text-muted-foreground text-xs'>
+                          {t('No performance data')}
+                        </span>
+                      )}
+                      {hiddenGroup && (
                         <span className='text-muted-foreground text-xs'>
                           {t(
                             'This scope is not exposed in the marketplace; its source rule is retained but not shown publicly.'
@@ -1152,44 +1121,15 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
                 },
               },
               {
-                id: 'status',
-                header: t('Rule status'),
-                className: 'min-w-40',
-                cell: (row) => {
-                  let inheritedLabel = t('Legacy mapping')
-                  if (row.inheritedFrom === 'default') {
-                    inheritedLabel = t('Inherits default rule')
-                  }
-                  if (row.inheritedFrom === 'legacy-all') {
-                    inheritedLabel = t('Legacy public sources')
-                  }
-                  return row.configured ? (
-                    <div className='flex flex-col items-start gap-1'>
-                      <StatusBadge variant='info' copyable={false}>
-                        {t('Explicit rule')}
-                      </StatusBadge>
-                      {row.sources.length === 0 && (
-                        <span className='text-muted-foreground text-xs'>
-                          {t('No performance data')}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <StatusBadge variant='neutral' copyable={false}>
-                      {inheritedLabel}
-                    </StatusBadge>
-                  )
-                },
-              },
-              {
                 id: 'sources',
                 header: t('Original source groups'),
                 className: 'min-w-80',
+                cellClassName: 'w-80 max-w-80 whitespace-normal',
                 cell: (row) => {
                   let scopeLabel = row.groupName ?? row.scope
                   if (row.scope === 'all') scopeLabel = t('All groups view')
                   if (row.scope === 'default') {
-                    scopeLabel = t('Default for display groups')
+                    scopeLabel = t('Global default sources (not a group)')
                   }
                   const inputId = `performance-sources-${encodeURIComponent(row.scope)}`
                   const unknownSources = row.sources.filter(
@@ -1206,7 +1146,7 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
 
                   return (
                     <div className='flex items-start gap-1'>
-                      <div className='min-w-72 flex-1'>
+                      <div className='min-w-64 flex-1'>
                         <Label htmlFor={inputId} className='sr-only'>
                           {sourceLabel}
                         </Label>
@@ -1277,50 +1217,60 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
                       </span>
                     )
                   }
-                  const configured =
-                    row.scope === 'default' ||
-                    Object.hasOwn(fallbacks, row.scope)
+                  const configured = Object.hasOwn(fallbacks, row.scope)
                   const enabled = configured
-                    ? (fallbacks[row.scope] ?? false)
+                    ? fallbacks[row.scope]
                     : (fallbacks.default ?? false)
+                  let fallbackMode = enabled ? 'on' : 'off'
+                  if (!configured && row.scope !== 'default') {
+                    fallbackMode = 'inherit'
+                  }
                   const label = row.groupName
                     ? t('Fallback to {{group}} when sources have no data', {
                         group: row.groupName,
                       })
                     : t('Default fallback to the selected group')
+                  const noSources =
+                    row.sources.length === 0 &&
+                    (row.configured || row.inheritedFrom === 'default')
                   return (
                     <div className='flex items-center gap-2'>
-                      <Checkbox
-                        checked={enabled}
-                        disabled={!configured}
-                        onCheckedChange={(checked) =>
-                          setFallback(row.scope, checked === true)
-                        }
+                      <Combobox
+                        options={[
+                          ...(row.scope === 'default'
+                            ? []
+                            : [
+                                {
+                                  value: 'inherit',
+                                  label: t(
+                                    'Follow global fallback: {{state}}',
+                                    {
+                                      state: fallbacks.default
+                                        ? t('Enabled')
+                                        : t('Disabled'),
+                                    }
+                                  ),
+                                },
+                              ]),
+                          {
+                            value: 'on',
+                            label: t('Use this group if sources have no data'),
+                          },
+                          {
+                            value: 'off',
+                            label: t('Show no data if sources have no data'),
+                          },
+                        ]}
+                        value={fallbackMode}
+                        onValueChange={(value) => {
+                          if (value === 'inherit') inheritFallback(row.scope)
+                          else setFallback(row.scope, value === 'on')
+                        }}
+                        disabled={noSources}
                         aria-label={label}
+                        className='w-full min-w-52'
                       />
-                      {row.scope !== 'default' &&
-                        (configured ? (
-                          <Button
-                            type='button'
-                            variant='outline'
-                            size='sm'
-                            onClick={() => inheritFallback(row.scope)}
-                            aria-label={`${t('Use inherited')}: ${label}`}
-                          >
-                            {t('Use inherited')}
-                          </Button>
-                        ) : (
-                          <Button
-                            type='button'
-                            variant='outline'
-                            size='sm'
-                            onClick={() => setFallback(row.scope, enabled)}
-                            aria-label={`${t('Override')}: ${label}`}
-                          >
-                            {t('Override')}
-                          </Button>
-                        ))}
-                      {row.configured && row.sources.length === 0 && (
+                      {noSources && (
                         <Tooltip>
                           <TooltipTrigger
                             render={
@@ -1359,7 +1309,7 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
                       size='sm'
                       onClick={() => inheritRule(row.scope)}
                     >
-                      {t('Use inherited')}
+                      {t('Reset sources')}
                     </Button>
                   ) : (
                     <Button
@@ -1368,7 +1318,7 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
                       size='sm'
                       onClick={() => updateRule(row.scope, row.sources)}
                     >
-                      {t('Override')}
+                      {t('Customize sources')}
                     </Button>
                   ),
               },
@@ -1377,7 +1327,7 @@ function PerformanceRulesEditor(props: PerformanceRulesEditorProps) {
         </TooltipProvider>
         <p className='text-muted-foreground text-sm'>
           {t(
-            'The all rule applies when no marketplace group is selected. A group rule overrides the default rule; without either, the legacy performance mapping remains in effect. Source arrays use original group names, including hidden groups, and are never resolved recursively.'
+            'Group-specific sources take priority over global defaults; otherwise existing sources apply. All groups view is separate. Empty sources intentionally show no data and disable fallback.'
           )}
         </p>
       </CardContent>

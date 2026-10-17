@@ -61,6 +61,7 @@ import {
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { safeJsonParse } from '../utils/json-parser'
 import { safeNumberFieldProps } from '../utils/numeric-field'
+import { normalizeGroupPerformanceConfig } from './group-performance-config'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
 
@@ -107,6 +108,22 @@ export const GroupRatioForm = memo(function GroupRatioForm({
   const toggleEditMode = useCallback(() => {
     setEditMode((prev) => (prev === 'visual' ? 'json' : 'visual'))
   }, [])
+
+  const handleSave = async (values: GroupFormValues) => {
+    const savedValues = {
+      ...values,
+      ...normalizeGroupPerformanceConfig(values),
+    }
+    await onSave(savedValues)
+    const currentValues = form.getValues()
+    if (
+      Object.entries(values).every(
+        ([key, value]) => currentValues[key as keyof GroupFormValues] === value
+      )
+    ) {
+      form.reset(savedValues)
+    }
+  }
 
   const watchedGroupRatio = form.watch('GroupRatio')
   const watchedUserUsableGroups = form.watch('UserUsableGroups')
@@ -162,7 +179,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
           <Button
             type='button'
             size='sm'
-            onClick={form.handleSubmit(onSave)}
+            onClick={form.handleSubmit(handleSave)}
             disabled={isSaving}
           >
             {isSaving ? t('Saving...') : t('Save group ratios')}
@@ -246,7 +263,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
             />
           </div>
         ) : (
-          <SettingsForm onSubmit={form.handleSubmit(onSave)}>
+          <SettingsForm onSubmit={form.handleSubmit(handleSave)}>
             <FormField
               control={form.control}
               name='GroupRatio'
@@ -346,31 +363,6 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   <FormDescription>
                     {t(
                       'JSON map of group identifiers to true. Hidden groups remain available for API routing and billing.'
-                    )}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='PerformanceGroupMapping'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Performance display group')}</FormLabel>
-                  <FormControl>
-                    <JsonCodeEditor
-                      value={field.value}
-                      onChange={field.onChange}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      textareaRef={field.ref}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t(
-                      'JSON map: source group → display group. Only one-hop mappings to visible groups are allowed. Performance source rules take priority when configured.'
                     )}
                   </FormDescription>
                   <FormMessage />

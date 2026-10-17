@@ -133,7 +133,17 @@ const createModelSchema = (t: Translate) =>
 
 export const createGroupSchema = (t: Translate) =>
   z.object({
-    GroupRatio: createJsonStringField(t),
+    GroupRatio: createJsonStringField(t, {
+      predicate: (parsed) =>
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        Object.values(parsed).every(
+          (ratio) =>
+            typeof ratio === 'number' && Number.isFinite(ratio) && ratio >= 0
+        ),
+      predicateMessage: 'Invalid JSON format or values out of allowed range',
+    }),
     TopupGroupRatio: createJsonStringField(t),
     UserUsableGroups: createJsonStringField(t),
     GroupGroupRatio: createJsonStringField(t),
@@ -146,7 +156,14 @@ export const createGroupSchema = (t: Translate) =>
     MaxTokenAutoGroups: positiveIntegerSchema(t('Enter a positive integer')),
     DefaultUseAutoGroup: z.boolean(),
     GroupSpecialUsableGroup: createJsonStringField(t),
-    HiddenGroups: createJsonStringField(t),
+    HiddenGroups: createJsonStringField(t, {
+      predicate: (parsed) =>
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        Object.values(parsed).every((hidden) => typeof hidden === 'boolean'),
+      predicateMessage: 'Invalid JSON format or values out of allowed range',
+    }),
     PerformanceGroupMapping: createJsonStringField(t, {
       predicate: (parsed) => {
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
