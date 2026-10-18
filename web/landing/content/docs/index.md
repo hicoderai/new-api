@@ -12,5 +12,5 @@ HelloCoder 文档集中整理产品使用方式和服务条款。你可以从快
 
 ## 服务条款
 
-- [用户协议](/docs/legal/user-agreement)：账户使用、计费、不支持退款政策、免责声明及新加坡法律约定。
+- [用户协议](/docs/legal/user-agreement)：账户使用、模型服务、计费及内容标准等约定。
 - [隐私政策](/docs/legal/privacy-policy)：账户信息、调用日志、生成任务、上游处理和个人信息权利。
