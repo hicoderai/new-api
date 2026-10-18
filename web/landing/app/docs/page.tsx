@@ -3,6 +3,16 @@ import { Markdown } from "@/components/docs/markdown";
 import { Separator } from "@/components/ui/separator";
 import { getDocsIndexDocument } from "@/lib/docs/content";
 import { getTableOfContents } from "@/lib/docs/toc";
+import { pageMetadata, siteName } from "@/lib/seo";
+
+export function generateMetadata() {
+  const document = getDocsIndexDocument();
+  return pageMetadata(
+    `${document.title} | ${siteName}`,
+    document.description ?? "HelloCoder-API 接入文档、服务条款与隐私政策。",
+    "/docs/",
+  );
+}
 
 export default function DocsIndexPage() {
   const document = getDocsIndexDocument();

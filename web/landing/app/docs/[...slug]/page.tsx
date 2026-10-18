@@ -7,6 +7,7 @@ import { Markdown } from "@/components/docs/markdown";
 import { Separator } from "@/components/ui/separator";
 import { getAdjacentDocuments, getAllDocuments, getDocument } from "@/lib/docs/content";
 import { getTableOfContents } from "@/lib/docs/toc";
+import { pageMetadata, siteName } from "@/lib/seo";
 
 interface DocPageProps {
   params: Promise<{ slug: string[] }>;
@@ -24,10 +25,11 @@ export async function generateMetadata({ params }: DocPageProps): Promise<Metada
 
   if (!document) return {};
 
-  return {
-    title: document.title,
-    description: document.description,
-  };
+  return pageMetadata(
+    `${document.title} | ${siteName}`,
+    document.description ?? `${document.title}：HelloCoder-API 产品文档。`,
+    `${document.href}/`,
+  );
 }
 
 export default async function DocPage({ params }: DocPageProps) {

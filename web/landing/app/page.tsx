@@ -13,10 +13,31 @@ import { Offers } from "@/components/offers/offers";
 import { Pricing } from "@/components/pricing/pricing";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { SiteFooter } from "@/components/site-footer";
+import { pageMetadata, siteDescription, siteName, siteUrl } from "@/lib/seo";
+
+export const metadata = pageMetadata(
+  "HelloCoder-API｜AI 模型 API 接入与按量计费平台",
+  siteDescription,
+  "/",
+);
 
 export default function Home() {
   return (
     <SmoothScroll>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: siteName,
+            alternateName: "HelloCoder",
+            url: `${siteUrl}/`,
+            description: siteDescription,
+            inLanguage: "zh-CN",
+          }).replace(/</g, "\\u003c"),
+        }}
+      />
       <main id="main-content" className="overflow-x-clip text-neutral-950">
         <Hero
           topCard={{

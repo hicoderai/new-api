@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import "lenis/dist/lenis.css";
 import { cn } from "@/lib/utils";
+import { siteDescription, siteName, siteUrl } from "@/lib/seo";
 
 const inter = Inter({
   weight: "variable",
@@ -23,9 +24,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HelloCoder",
-  description:
-    "通过统一接口连接主流AI大模型，自费正价PRO20x账号，GPT系列低至0.09x，Claude低至0.6x，为VibeCoding助力",
+  metadataBase: new URL(siteUrl),
+  title: { default: siteName, template: `%s | ${siteName}` },
+  description: siteDescription,
   icons: {
     icon: "/favicon.ico",
   },
