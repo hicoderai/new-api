@@ -12,6 +12,7 @@ import { Hero } from "@/components/hero/hero";
 import { Offers } from "@/components/offers/offers";
 import { Pricing } from "@/components/pricing/pricing";
 import { SmoothScroll } from "@/components/smooth-scroll";
+import { SiteFooter } from "@/components/site-footer";
 
 export default function Home() {
   return (
@@ -244,6 +245,7 @@ export default function Home() {
           }}
         />
       </main>
+      <SiteFooter />
     </SmoothScroll>
   );
 }

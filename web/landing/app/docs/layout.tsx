@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { docsConfig } from "@/app/docs/docs.config";
 import { DocsHeader } from "@/components/docs/docs-header";
 import { DocsNavigation } from "@/components/docs/docs-navigation";
+import { SiteFooter } from "@/components/site-footer";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getDocsNavigation } from "@/lib/docs/content";
 
@@ -32,7 +33,10 @@ export default function DocsLayout({ children }: Readonly<{ children: React.Reac
           data-docs-content-scroll
           className="min-w-0 [&_[data-slot=scroll-area-viewport]]:overscroll-contain lg:col-span-2 lg:col-start-3 lg:min-h-0 lg:h-full"
         >
-          <div className="min-w-0 lg:max-w-[1344px]">{children}</div>
+          <div className="min-w-0 lg:max-w-[1344px]">
+            {children}
+            <SiteFooter />
+          </div>
         </ScrollArea>
       </div>
     </div>
